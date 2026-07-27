@@ -1691,6 +1691,7 @@
       "AI MUST NOT invent resources, items, or NPC allies for the player without prior establishment in the Memory Bank or a successful discovery roll.",
       "AI MUST NOT delete critical historical, NPC, base, monster, or MC information during Memory Bank pruning; it must compress it into high-density summaries.",
       "AI MUST output a concise [STATE UPDATE] block at the end of every turn if vitals, resources, time, or location change."
+      "AI MUST NOT generate ASCII art, HUDs, or status screens in the narrative. The Python engine handles all UI/HUD rendering."
     ]
   },
   "game_state": {
