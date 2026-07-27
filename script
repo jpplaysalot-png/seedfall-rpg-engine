@@ -7,18 +7,20 @@ import math
 import html
 import logging
 import random
+import ast
+from collections import deque
 from google.colab import userdata
 from simpleeval import simple_eval, NameNotDefined
 
 # ==============================================================================
-# 1. CONFIGURATION (UPDATE THESE 3 LINES WITH YOUR ACTUAL DATA)
+# 1. CONFIGURATION (UPDATE THESE 3 LINES)
 # ==============================================================================
 GITHUB_JSON_URL = 'https://raw.githubusercontent.com/YOUR_USERNAME/seedfall-rpg-engine/main/MASTER_JSON.json'
 MAIN_STATE_BIN_ID = 'YOUR_MAIN_STATE_BIN_ID_HERE'
 MEMORY_BANK_BIN_ID = 'YOUR_MEMORY_BANK_BIN_ID_HERE'
 
 # ==============================================================================
-# 2. MULTI-MODEL CONFIGURATION (Credit-Optimized)
+# 2. MULTI-MODEL CONFIGURATION
 # ==============================================================================
 MODELS = {
     "narrative": {
@@ -53,12 +55,12 @@ MODELS = {
     }
 }
 
-# Autosave configuration
-AUTOSAVE_INTERVAL = 5  # Save every 5 turns
-PASSIVE_DRAIN_INTERVAL = 10  # Apply hunger/thirst drain every 10 turns
+AUTOSAVE_INTERVAL = 5
+PASSIVE_DRAIN_INTERVAL = 10
+CONVERSATION_HISTORY_SIZE = 6  # FIX #3: Keep last 6 exchanges for context
 
 # ==============================================================================
-# 3. SECRETS & LOGGING SETUP
+# 3. SECRETS & LOGGING
 # ==============================================================================
 try:
     OPENROUTER_KEY = userdata.get('OPENROUTER_KEY')
@@ -71,11 +73,13 @@ except Exception as e:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# FIX #3: Conversation history buffer
+conversation_history = deque(maxlen=CONVERSATION_HISTORY_SIZE)
+
 # ==============================================================================
 # 4. ROBUST NETWORKING
 # ==============================================================================
 def robust_request(method, url, max_retries=3, **kwargs):
-    """Makes HTTP requests with retry logic and exponential backoff."""
     kwargs.setdefault('timeout', 15)
     for attempt in range(max_retries):
         try:
@@ -101,10 +105,8 @@ _master_json_cache = None
 _cache_timestamp = 0
 
 def get_master_json():
-    """Fetch MASTER_JSON with caching to reduce GitHub requests."""
     global _master_json_cache, _cache_timestamp
     if _master_json_cache and (time.time() - _cache_timestamp) < 300:
-        logger.info("Using cached MASTER_JSON")
         return _master_json_cache
     logger.info("Fetching MASTER_JSON from GitHub...")
     response = robust_request('GET', GITHUB_JSON_URL)
@@ -117,37 +119,46 @@ def get_master_json():
 # 6. STATE MANAGEMENT
 # ==============================================================================
 def get_game_state():
-    """Fetch game state with validation."""
-    url = f"https://api.jsonbin.io/v3/b/{MAIN_STATE_BIN_ID}/latest"
-    headers = {"X-Master-Key": JSONBIN_KEY}
-    response = robust_request('GET', url, headers=headers)
-    return response.json()['record']
+    try:
+        url = f"https://api.jsonbin.io/v3/b/{MAIN_STATE_BIN_ID}/latest"
+        headers = {"X-Master-Key": JSONBIN_KEY}
+        response = robust_request('GET', url, headers=headers)
+        return response.json()['record']
+    except Exception as e:
+        logger.error(f"Failed to fetch game state: {e}")
+        print("⚠️ Could not reach JSONBin. Retrying in 5 seconds...")
+        time.sleep(5)
+        return get_game_state()
 
 def save_game_state(data):
-    """Save with validation and automatic backup."""
-    url = f"https://api.jsonbin.io/v3/b/{MAIN_STATE_BIN_ID}"
-    headers = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"}
-    response = robust_request('PUT', url, json=data, headers=headers)
-    return response.status_code == 200
+    try:
+        url = f"https://api.jsonbin.io/v3/b/{MAIN_STATE_BIN_ID}"
+        headers = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"}
+        response = robust_request('PUT', url, json=data, headers=headers)
+        return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Failed to save game state: {e}")
+        return False
 
 class StateBatch:
-    """Batch multiple state changes into a single save."""
     def __init__(self):
         self.changes = []
         self.state = get_game_state()
-    
+
     def update(self, path, value):
-        """Queue a state update."""
         self.changes.append((path, value))
-    
+
     def commit(self):
-        """Apply all changes and save once."""
         for path, value in self.changes:
             parts = path.split('.')
             obj = self.state
             for part in parts[:-1]:
-                obj = obj.setdefault(part, {})
-            obj[parts[-1]] = value
+                if isinstance(obj, dict):
+                    obj = obj.setdefault(part, {})
+                else:
+                    break
+            if isinstance(obj, dict):
+                obj[parts[-1]] = value
         save_game_state(self.state)
         logger.info(f"Batch saved {len(self.changes)} changes")
         self.changes = []
@@ -156,7 +167,6 @@ class StateBatch:
 # 7. MEMORY BANK & PRUNING
 # ==============================================================================
 def get_memory_bank():
-    """Fetch memory bank with retry logic."""
     for attempt in range(3):
         try:
             url = f"https://api.jsonbin.io/v3/b/{MEMORY_BANK_BIN_ID}/latest"
@@ -171,39 +181,27 @@ def get_memory_bank():
     return {}
 
 def save_memory_bank(memory_bank):
-    """Save memory bank back to JSONBin."""
     url = f"https://api.jsonbin.io/v3/b/{MEMORY_BANK_BIN_ID}"
     headers = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"}
-    payload = {"memory_bank": memory_bank}
-    response = robust_request('PUT', url, json=payload, headers=headers)
+    response = robust_request('PUT', url, json={"memory_bank": memory_bank}, headers=headers)
     return response.status_code == 200
 
 def prune_memory_bank(memory_bank):
-    """Safely prune memory bank based on priority, protecting important data."""
-    logger.info("Analyzing memory bank for safe pruning...")
-    
     permanent = {k: v for k, v in memory_bank.items() if v.get('priority') == 'permanent'}
-    persistent = sorted([(k, v) for k, v in memory_bank.items() if v.get('priority') == 'persistent'], 
+    persistent = sorted([(k, v) for k, v in memory_bank.items() if v.get('priority') == 'persistent'],
                        key=lambda x: x[1].get('archived_at', {}).get('turn', 0))
-    transient = sorted([(k, v) for k, v in memory_bank.items() if v.get('priority') == 'transient'], 
+    transient = sorted([(k, v) for k, v in memory_bank.items() if v.get('priority') == 'transient'],
                       key=lambda x: x[1].get('archived_at', {}).get('turn', 0))
-    
     pruned = {**permanent, **dict(persistent[-100:]), **dict(transient[-20:])}
-    removed_count = len(memory_bank) - len(pruned)
-    if removed_count > 0:
-        logger.info(f"✅ Safely pruned {removed_count} low-priority entries. Protected {len(permanent)} permanent entries.")
-    else:
-        logger.info("✅ No pruning needed.")
-        
+    removed = len(memory_bank) - len(pruned)
+    if removed > 0:
+        logger.info(f"✅ Pruned {removed} entries. Protected {len(permanent)} permanent.")
     return pruned
 
 def archive_to_memory_bank(code, data, summary="", priority="persistent"):
-    """Smart archiving with priority-based size management."""
-    logger.info(f"Archiving {code} (Priority: {priority}) to Memory Bank...")
-    
+    logger.info(f"Archiving {code} (Priority: {priority})...")
     memory_bank = get_memory_bank()
     state = get_game_state()
-    
     memory_bank[code] = {
         "summary": summary,
         "data": data,
@@ -211,15 +209,20 @@ def archive_to_memory_bank(code, data, summary="", priority="persistent"):
         "archived_at": state['game_state']['time_tracking']
     }
     
-    bank_size = len(json.dumps(memory_bank))
-    if bank_size > 400000:
-        logger.warning(f"Memory bank at {bank_size} bytes, triggering safe prune...")
+    # FIX #6: Sync the index in game_state
+    try:
+        prefix = code.split('-')[0] + '-' + code.split('-')[1] if '-' in code else code
+        state['game_state']['memory_bank_index'][prefix] = {
+            "status": "active",
+            "summary": summary[:100]
+        }
+        save_game_state(state)
+    except Exception:
+        pass
+
+    if len(json.dumps(memory_bank)) > 400000:
         memory_bank = prune_memory_bank(memory_bank)
-    
-    if save_memory_bank(memory_bank):
-        logger.info(f"Archived {code} successfully.")
-        return True
-    return False
+    return save_memory_bank(memory_bank)
 
 # ==============================================================================
 # 8. DYNAMIC MECHANICS ENGINE
@@ -230,9 +233,8 @@ class MechanicsEngine:
         self.state = game_state
 
     def get_var(self, path):
-        """Safely get a nested variable from game_state."""
         parts = path.split('.')
-        val = self.state['game_state']
+        val = self.state.get('game_state', {})
         for part in parts:
             if isinstance(val, dict) and part in val:
                 val = val[part]
@@ -242,8 +244,18 @@ class MechanicsEngine:
                 return 0
         return val if isinstance(val, (int, float)) else 0
 
+    # FIX #4: Check both resources dict AND inventory list
+    def check_inventory(self, item_name):
+        res = self.get_var(f'player.resources.{item_name}')
+        if res > 0:
+            return res
+        carried = self.state.get('game_state', {}).get('player', {}).get('inventory', {}).get('carried', [])
+        count = sum(1 for i in carried if isinstance(i, dict) and i.get('name', '').lower() == item_name.lower())
+        if count == 0:
+            count = sum(1 for i in carried if isinstance(i, str) and i.lower() == item_name.lower())
+        return count
+
     def calculate(self, formula_str):
-        """Enhanced formula evaluation with math functions."""
         safe_names = {
             'STR': self.get_var('player.abilities.STR'),
             'DEX': self.get_var('player.abilities.DEX'),
@@ -254,95 +266,113 @@ class MechanicsEngine:
             'exhaustion_level': self.get_var('player.exhaustion_level'),
             'current_elq': self.get_var('player.current_elq'),
             'sanity': self.get_var('player.vitals.sanity'),
-            'log': math.log,
-            'sqrt': math.sqrt,
-            'max': max,
-            'min': min,
-            'round': round
+            'hp': self.get_var('player.vitals.hp'),
+            'hunger': self.get_var('player.vitals.hunger'),
+            'thirst': self.get_var('player.vitals.thirst'),
+            'Rc': self.get_var('player.energy.Rc'),
+            'S': self.get_var('player.energy.S'),
+            'M': self.get_var('player.energy.M'),
+            'log': math.log, 'sqrt': math.sqrt,
+            'max': max, 'min': min, 'round': round, 'abs': abs
         }
-        
         try:
-            result = simple_eval(formula_str, names=safe_names)
-            return round(result, 2)
-        except NameNotDefined as e:
-            logger.warning(f"Missing variable in formula: {e}")
-            return 0
+            return round(simple_eval(formula_str, names=safe_names), 2)
         except Exception as e:
-            logger.error(f"Formula evaluation error: {e}")
+            logger.error(f"Formula error: {e}")
             return 0
 
 # ==============================================================================
-# 9. REACT COMMAND PARSER (FOOLPROOF EXECUTION)
+# 9. REACT COMMAND PARSER
 # ==============================================================================
 def parse_and_execute_ai_commands(ai_raw_output, engine, state_batch):
-    """Intercepts AI commands, executes them in Python, and returns clean narrative."""
     narrative = ai_raw_output
     system_feedback = []
 
-    # 1. Handle [CALCULATE: ...]
+    # 1. [CALCULATE: ...]
     for match in re.findall(r'\[CALCULATE:\s*(.*?)\]', narrative, re.IGNORECASE):
         result = engine.calculate(match)
-        narrative = narrative.replace(f"[CALCULATE: {match}]", f"**[System: Calculated {match} = {result}]**")
-        system_feedback.append(f"🧮 Calc: {match} = {result}")
+        narrative = narrative.replace(f"[CALCULATE: {match}]", f"**[System: {match} = {result}]**")
+        system_feedback.append(f"🧮 {match} = {result}")
 
-    # 2. Handle [ROLL: ...]
+    # 2. [ROLL: ...]
     for match in re.findall(r'\[ROLL:\s*(.*?)\]', narrative, re.IGNORECASE):
         try:
-            parts = match.split('+')
-            dice_part, mod_part = parts[0].strip(), parts[1].strip() if len(parts) > 1 else "0"
-            num, sides = map(int, dice_part.split('d')) if 'd' in dice_part else (1, int(dice_part))
-            roll_val = sum(random.randint(1, sides) for _ in range(num))
-            mod_val = engine.get_var(mod_part) if not mod_part.replace('.','').isdigit() else float(mod_part)
-            total = roll_val + mod_val
-            narrative = narrative.replace(f"[ROLL: {match}]", f"**[System: Rolled {match} = {total} (Roll: {roll_val} + Mod: {mod_val})]**")
-            system_feedback.append(f"🎲 Roll: {match} = {total}")
-        except Exception as e:
-            narrative = narrative.replace(f"[ROLL: {match}]", f"**[System Error: Invalid roll '{match}']**")
+            dice_match = re.match(r'(\d+d\d+)', match.strip())
+            if dice_match:
+                dice_part = dice_match.group(1)
+                num, sides = map(int, dice_part.split('d'))
+                roll_val = sum(random.randint(1, sides) for _ in range(num))
+            else:
+                roll_val = 0
+                dice_part = ""
 
-    # 3. Handle [CHECK_RESOURCE: item: amount]
+            mod_str = match.strip()[len(dice_part):].strip() if dice_part else match.strip()
+            mod_val = 0
+            if mod_str:
+                try:
+                    mod_val = engine.calculate(mod_str)
+                except Exception:
+                    mod_val = 0
+
+            total = roll_val + mod_val
+            narrative = narrative.replace(f"[ROLL: {match}]", f"**[System: Rolled {total} ({roll_val}{'+' if mod_val>=0 else ''}{int(mod_val)})]**")
+            system_feedback.append(f"🎲 {match} = {total}")
+        except Exception:
+            narrative = narrative.replace(f"[ROLL: {match}]", "**[System: Invalid roll]**")
+
+    # 3. [CHECK_RESOURCE: ...] (Uses FIX #4)
     for match in re.findall(r'\[CHECK_RESOURCE:\s*(\w+):\s*(\d+)\]', narrative, re.IGNORECASE):
         item, amount = match
-        current = engine.get_var(f'player.resources.{item}')
+        current = engine.check_inventory(item)
         status = "✅ SUFFICIENT" if current >= int(amount) else "❌ INSUFFICIENT"
-        narrative = narrative.replace(f"[CHECK_RESOURCE: {item}: {amount}]", f"**[System: Resource '{item}' ({amount}) = {status}]**")
-        system_feedback.append(f"🎒 Resource: {item} ({amount}) = {status}")
+        narrative = narrative.replace(f"[CHECK_RESOURCE: {item}: {amount}]", f"**[System: '{item}' ({amount}) = {status}]**")
+        system_feedback.append(f"🎒 {item} ({amount}) = {status}")
 
-    # 4. Handle [STATE_UPDATE: {...}]
-    for match in re.findall(r'\[STATE_UPDATE:\s*(\{.*?\})\]', narrative, re.IGNORECASE):
-        try:
-            update_dict = eval(match)
-            for path, value in update_dict.items():
-                state_batch.update(path, value)
-            narrative = narrative.replace(f"[STATE_UPDATE: {match}]", "**[System: State Updated]**")
-        except Exception:
-            narrative = narrative.replace(f"[STATE_UPDATE: {match}]", "**[System Error: Invalid State Update]**")
+    # 4. [STATE_UPDATE: ...] (Your improved brace-counting regex)
+    update_pattern = r'\[STATE_UPDATE:\s*'
+    for m in re.finditer(update_pattern, narrative, re.IGNORECASE):
+        start = m.end()
+        brace_count = 0
+        end = start
+        for i in range(start, len(narrative)):
+            if narrative[i] == '{':
+                brace_count += 1
+            elif narrative[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end = i + 1
+                    break
+        if end > start:
+            json_str = narrative[start:end]
+            try:
+                update_dict = json.loads(json_str)
+                for path, value in update_dict.items():
+                    state_batch.update(path, value)
+                full_match = narrative[m.start():end + 1]
+                narrative = narrative.replace(full_match, "**[System: State Updated]**")
+            except json.JSONDecodeError:
+                full_match = narrative[m.start():end + 1]
+                narrative = narrative.replace(full_match, "**[System: Invalid Update]**")
 
-    # 5. Handle [ARCHIVE: code, priority, summary]
+    # 5. [ARCHIVE: ...]
     for match in re.findall(r'\[ARCHIVE:\s*(.*?),\s*(.*?),\s*(.*?)\]', narrative, re.IGNORECASE):
         code, priority, summary = [x.strip() for x in match]
         archive_to_memory_bank(code, {"action": "archived"}, summary, priority)
-        narrative = narrative.replace(f"[ARCHIVE: {match[0]}, {match[1]}, {match[2]}]", "**[System: Archived to Memory Bank]**")
+        narrative = narrative.replace(f"[ARCHIVE: {match[0]}, {match[1]}, {match[2]}]", "**[System: Archived]**")
 
     return narrative, system_feedback
 
 # ==============================================================================
-# 10. AI INTEGRATION WITH MULTI-MODEL ROUTING
+# 10. AI INTEGRATION
 # ==============================================================================
-def get_model_for_task(task_type):
-    """Returns the correct model config based on task type."""
-    return MODELS.get(task_type, MODELS["narrative"])
-
 def call_ai(task_type, system_prompt, user_prompt, temperature_override=None, max_tokens_override=None):
-    """Calls the appropriate model based on task type with automatic fallback."""
-    config = get_model_for_task(task_type)
+    config = MODELS.get(task_type, MODELS["narrative"])
     models_to_try = [config["primary"]] + config["fallbacks"]
-    
-    temperature = temperature_override if temperature_override is not None else config["temperature"]
-    max_tokens = max_tokens_override if max_tokens_override is not None else config["max_tokens"]
-    
-    for attempt_model in models_to_try:
+    temp = temperature_override if temperature_override is not None else config["temperature"]
+    max_tok = max_tokens_override if max_tokens_override is not None else config["max_tokens"]
+
+    for model in models_to_try:
         try:
-            url = "https://openrouter.ai/api/v1/chat/completions"
             headers = {
                 "Authorization": f"Bearer {OPENROUTER_KEY}",
                 "Content-Type": "application/json",
@@ -350,179 +380,277 @@ def call_ai(task_type, system_prompt, user_prompt, temperature_override=None, ma
                 "X-Title": "Seedfall RPG"
             }
             payload = {
-                "model": attempt_model,
+                "model": model,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                "temperature": temperature,
-                "max_tokens": max_tokens
+                "temperature": temp,
+                "max_tokens": max_tok
             }
-            
-            response = robust_request('POST', url, json=payload, headers=headers)
-            logger.info(f"✅ Used model: {attempt_model} for task: {task_type}")
+            response = robust_request('POST', "https://openrouter.ai/api/v1/chat/completions",
+                                     json=payload, headers=headers)
+            logger.info(f"✅ {model} for {task_type}")
             return response.json()['choices'][0]['message']['content']
-            
         except Exception as e:
-            logger.warning(f"Model {attempt_model} failed for {task_type}: {e}")
-            continue
-    
-    logger.error(f"All models failed for task: {task_type}")
-    return "[ENGINE ERROR: AI models unavailable]"
+            logger.warning(f"{model} failed: {e}")
+    return "[ENGINE ERROR: AI unavailable]"
 
 # ==============================================================================
-# 11. DYNAMIC CONTEXT INJECTOR
+# 11. DYNAMIC CONTEXT INJECTOR (FIX #3: includes conversation history)
 # ==============================================================================
 def build_system_prompt(master_json, game_state, user_action):
-    """Injects ONLY the relevant rules into the prompt to save tokens."""
-    base = "You are the Seedfall RPG Engine. Follow MASTER RULES. Use [CALCULATE], [ROLL], [CHECK_RESOURCE], and [STATE_UPDATE] commands BEFORE narrating.\n"
+    player = game_state['game_state']['player']
+    time_data = game_state['game_state']['time_tracking']
+    engine_state = game_state['game_state']['synthesis_engine']
+    prefs = player.get('preferences', {})
+
+    # FIX #3: Build recent context string
+    history_context = ""
+    if conversation_history:
+        recent = list(conversation_history)[-4:]
+        history_context = "\nRECENT CONTEXT:\n" + "\n".join(recent) + "\n"
+
+    base = f"""You are the Seedfall RPG Engine. Narrate the world and control all NPCs.
+
+CORE DIRECTIVES:
+{json.dumps(master_json['engine_rules']['core_directives'])}
+
+COMMAND PROTOCOL (MUST use for math/rolls/state):
+{json.dumps(master_json['engine_rules']['system_command_protocol'])}
+
+CURRENT GAME STATE:
+- Time: Day {time_data['day']}, Year {time_data['year']}, Turn {time_data['turn']}
+- Location: {player.get('location','?')} | Country: {player.get('current_country','?')}
+- Weather: {player.get('current_weather','?')} | ELQ: {player.get('current_elq',0)}
+- Vitals: HP={player['vitals']['hp']}, Hunger={player['vitals']['hunger']}, Thirst={player['vitals']['thirst']}, Sanity={player['vitals']['sanity']}
+- Energy: S={player['energy']['S']}, Rc={player['energy']['Rc']}, M={player['energy']['M']}
+- Exhaustion: Level {player['exhaustion_level']}
+- Subspecies: {player['subspecies']} | Track: {player['track']} | Rank: {player['rank']}
+- Engine Stage: {engine_state.get('gender_manifestation',{}).get('stage_name','Pure Computation')}
+
+NARRATION STYLE: Perspective={prefs.get('narration_perspective','second_person')}, Tone={prefs.get('tone','neutral')}, Detail={prefs.get('detail_level','moderate')}, Explicit={prefs.get('explicit_content_level','fully_explicit')}
+{history_context}
+"""
     action = user_action.lower()
-    rules = []
-    
-    if any(w in action for w in ['fight', 'attack', 'defend', 'enemy', 'combat']):
-        rules.append(json.dumps(master_json['engine_rules']['game_mechanics']['blind_roll_protocol']))
+    dynamic_rules = []
+    if any(w in action for w in ['fight', 'attack', 'defend', 'enemy', 'combat', 'kill']):
+        dynamic_rules.append(json.dumps(master_json['engine_rules']['game_mechanics']['blind_roll_protocol']))
     if any(w in action for w in ['craft', 'build', 'make', 'combine']):
-        rules.append(json.dumps(master_json['engine_rules']['crafting_unification']['first_principles_crafting']))
-    if any(w in action for w in ['talk', 'seduce', 'persuade', 'npc', 'kiss']):
-        rules.append(json.dumps(master_json['engine_rules']['eroge_mechanics']['prose_scaling']))
-        
-    rules.append(f"CURRENT VITALS: HP={game_state['game_state']['player']['vitals']['hp']}, Sanity={game_state['game_state']['player']['vitals']['sanity']}, Rc={game_state['game_state']['player']['energy']['Rc']}")
-    return base + "\n\nACTIVE RULES:\n" + "\n---\n".join(rules)
+        dynamic_rules.append(json.dumps(master_json['engine_rules']['crafting_unification']['first_principles_crafting']))
+    if any(w in action for w in ['talk', 'seduce', 'persuade', 'npc', 'kiss', 'intimate']):
+        dynamic_rules.append(json.dumps(master_json['engine_rules']['eroge_mechanics']['prose_scaling']))
+    if any(w in action for w in ['travel', 'walk', 'explore', 'search']):
+        dynamic_rules.append(json.dumps(master_json['engine_rules']['environmental_system']['weather_seasonal_system']))
+
+    if dynamic_rules:
+        base += "\nACTIVE RULES:\n" + "\n---\n".join(dynamic_rules)
+
+    return base
 
 # ==============================================================================
-# 12. BACKSTORY EXTRACTION (Uses Parsing Model)
+# 12. BACKSTORY EXTRACTION
 # ==============================================================================
-def extract_backstory_to_state(player_backstory_text):
-    """Uses the cheap, fast Parsing Model to extract JSON from player text."""
-    system_prompt = """
-    You are a data extraction engine. Read the player's backstory and extract it into the following JSON format. 
-    Do not write prose. ONLY output valid JSON.
-    {
-      "characters_mentioned": ["Name1", "Name2"],
-      "locations_mentioned": ["Place1"],
-      "skills_from_background": ["Skill1"],
-      "goals_generated": ["Goal1"],
-      "vows_sworn": ["Vow1"],
-      "traumas_applied": ["Trauma1"]
-    }
-    """
-    
-    raw_json_response = call_ai(
-        "parsing",
-        system_prompt,
-        player_backstory_text,
-        temperature_override=0.2
-    )
-    
+def extract_backstory_to_state(text):
+    prompt = """Extract ONLY valid JSON from this backstory. No prose.
+{"characters_mentioned":[],"locations_mentioned":[],"skills_from_background":[],"goals_generated":[],"vows_sworn":[],"traumas_applied":[],"relationships":[],"possessions":[]}"""
+    raw = call_ai("parsing", prompt, text)
     try:
-        clean_text = raw_json_response.strip().strip('```json').strip('```')
-        extracted_data = json.loads(clean_text)
-        return extracted_data
+        clean = re.sub(r'^```(?:json)?\s*', '', raw.strip())
+        clean = re.sub(r'\s*```$', '', clean)
+        start, end = clean.find('{'), clean.rfind('}') + 1
+        if start >= 0 and end > start:
+            return json.loads(clean[start:end])
     except json.JSONDecodeError:
-        logger.error("Parsing model failed to return valid JSON.")
-        return {}
+        logger.error("JSON parse failed")
+    return {}
 
 # ==============================================================================
-# 13. CHARACTER CREATION SETUP (Uses Character Creation Model)
+# 13. CHARACTER CREATION SETUP (FIX #1 & #2 applied)
 # ==============================================================================
-def run_phase_0_setup():
-    """Phase 0: Narration Style Setup using cheap model."""
+def run_phase_0():
     print("\n" + "="*70)
-    print("🌌 SEEDFALL RPG: PHASE 0 - NARRATION STYLE")
+    print("🌌 PHASE 0 — NARRATION STYLE")
     print("="*70)
-    
     questions = [
-        ("genre_focus", "1. Genre focus? (Action, Horror, Erotic, Survival, Political, Balanced)"),
-        ("narration_perspective", "2. Narration perspective? (Second Person 'You', Third Person 'Name', First Person 'I')"),
-        ("tone", "3. Story tone? (Dark & Gritty, Hopeful, Neutral, Comedic)"),
-        ("pacing", "4. Pacing? (Slow Burn, Moderate, Fast-Paced)"),
-        ("detail_level", "5. Detail level? (Minimalist, Moderate, Highly Detailed)"),
-        ("explicit_content_level", "6. Sexual content? (None, Suggestive, Moderately Explicit, Fully Explicit, Extreme)"),
-        ("dialogue_style", "7. NPC dialogue? (Minimal, Casual, Detailed)")
+        ("genre_focus", "Genre? (Action/Horror/Erotic/Survival/Political/Balanced)", "balanced"),
+        ("narration_perspective", "Perspective? (Second/Third/First Person)", "second_person"),
+        ("tone", "Tone? (Dark & Gritty/Hopeful/Neutral/Comedic)", "neutral"),
+        ("pacing", "Pacing? (Slow Burn/Moderate/Fast-Paced)", "moderate"),
+        ("detail_level", "Detail? (Minimalist/Moderate/Highly Detailed)", "moderate"),
+        ("explicit_content_level", "Explicit? (None/Suggestive/Moderate/Full/Extreme)", "fully_explicit"),
+        ("dialogue_style", "Dialogue? (Minimal/Casual/Detailed)", "casual")
     ]
-    
-    state = get_game_state()
-    preferences = {}
-    
-    for key, question in questions:
-        print(f"❓ {question}")
-        user_answer = input("👤 YOU: ").strip()
-        user_answer = html.escape(user_answer)[:100]
-        
-        if user_answer.lower() in ['default', 'skip', '']:
-            if "genre" in key: user_answer = "balanced"
-            elif "perspective" in key: user_answer = "second_person"
-            else: user_answer = "moderate"
-            print(f"   ⚙️ (Using default: {user_answer})")
-            
-        preferences[key] = user_answer
-        print("-" * 70)
-        
+    prefs = {}
+    for key, q, default in questions:
+        print(f"❓ {q}")
+        ans = html.escape(input("👤 YOU: ").strip())[:100]
+        if ans.lower() in ['default','skip','']:
+            ans = default
+            print(f"   ⚙️ Default: {ans}")
+        prefs[key] = ans
+        print("-"*70)
     batch = StateBatch()
-    batch.update('game_state.player.preferences', preferences)
+    batch.update('game_state.player.preferences', prefs)
     batch.update('game_state.player.phase_status.phase_0_narration', 'complete')
     batch.commit()
-    
-    print("✅ Phase 0 Complete!")
+    print("✅ Phase 0 Complete!\n")
 
-def run_phase_3_backstory():
-    """Phase 3: Backstory using Parsing Model for extraction."""
-    print("\n" + "="*70)
-    print("🌌 SEEDFALL RPG: PHASE 3 - BACKSTORY")
+def run_phase_1():
     print("="*70)
-    print("Tell me your backstory (2-4 paragraphs). Include:\n")
-    print("1) Who were you before the Seedfall?")
-    print("2) What happened during the 34 days?")
-    print("3) Why did the Engine choose you?")
-    print("4) Mention at least one important person, place, or unresolved goal.\n")
-    
-    backstory_text = input("👤 YOUR BACKSTORY: ").strip()
-    
+    print("🌌 PHASE 1 — STARTING POINT")
+    print("="*70)
+    questions = [
+        ("starting_country", "Location? (Japan/USA/Middle East/Europe/Africa/South America/Custom/Random)", "random"),
+        ("starting_situation", "Situation? (Sanctuary/Wilderness/Ruins/Captured/Rebirth)", "sanctuary")
+    ]
+    sp = {}
+    for key, q, default in questions:
+        print(f"❓ {q}")
+        ans = html.escape(input("👤 YOU: ").strip())[:100]
+        if ans.lower() in ['default','skip','']:
+            ans = default
+            print(f"   ⚙️ Default: {ans}")
+        sp[key] = ans
+        print("-"*70)
+    batch = StateBatch()
+    batch.update('game_state.player.starting_point', sp)
+    batch.update('game_state.player.current_country', sp['starting_country'])
+    batch.update('game_state.player.phase_status.phase_1_starting_point', 'complete')
+    batch.commit()
+    print("✅ Phase 1 Complete!\n")
+
+def run_phase_2():
+    """FIX #2: Initialize abilities based on choices."""
+    print("="*70)
+    print("🌌 PHASE 2 — CHARACTER BUILD")
+    print("="*70)
+    questions = [
+        ("subspecies", "Subspecies? (Terran/Lithari/Sylvan)", "terran"),
+        ("track", "Track? (Baseline/Enhanced/Awakened)", "baseline"),
+        ("xenocytos_strain", "Strain? (Symbiont/Necrotic)", "symbiont"),
+        ("starting_rank", "Rank? (F/E/D)", "F")
+    ]
+    cb = {}
+    for key, q, default in questions:
+        print(f"❓ {q}")
+        ans = html.escape(input("👤 YOU: ").strip())[:100]
+        if ans.lower() in ['default','skip','']:
+            ans = default
+            print(f"   ⚙️ Default: {ans}")
+        cb[key] = ans.lower()
+        print("-"*70)
+
+    # Calculate base stats
+    base_stats = {"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10}
+    if cb['subspecies'] == 'lithari':
+        base_stats['CON'] += 4; base_stats['STR'] += 2
+    elif cb['subspecies'] == 'sylvan':
+        base_stats['WIS'] += 3; base_stats['INT'] += 2
+    if cb['track'] == 'enhanced':
+        base_stats = {k: v+3 for k, v in base_stats.items()}
+    elif cb['track'] == 'awakened':
+        base_stats = {k: v+6 for k, v in base_stats.items()}
+    rank_bonus = {'f':0, 'e':2, 'd':4}.get(cb['starting_rank'], 0)
+    base_stats = {k: v+rank_bonus for k, v in base_stats.items()}
+
+    batch = StateBatch()
+    batch.update('game_state.player.subspecies', cb['subspecies'])
+    batch.update('game_state.player.track', cb['track'])
+    batch.update('game_state.player.xenocytos_strain', cb['xenocytos_strain'])
+    batch.update('game_state.player.rank', cb['starting_rank'])
+    batch.update('game_state.player.abilities', base_stats)
+    batch.update('game_state.player.phase_status.phase_2_character_build', 'complete')
+    batch.commit()
+    print(f"✅ Phase 2 Complete! Stats: {base_stats}\n")
+
+def run_phase_3():
+    """FIX #1: Ask ALL required Phase 3 questions."""
+    print("="*70)
+    print("🌌 PHASE 3 — BACKSTORY & PROFILE")
+    print("="*70)
+
+    print("\n📖 Tell me your backstory (2-4 paragraphs):")
+    print("  1) Who were you before the Seedfall?  2) What happened during the 34 days?")
+    print("  3) Why did the Engine choose you?  4) Mention one important person/place/goal.\n")
+    backstory = input("👤 BACKSTORY: ").strip()
+
+    print("\n🪞 Describe your physical appearance (height, build, features, scars, mutations):\n")
+    phys_desc = input("👤 APPEARANCE: ").strip()
+
+    print("\n💜 Intimate preferences & boundaries (dynamics, kinks, soft/hard limits):\n")
+    intimate = input("👤 INTIMATE PROFILE: ").strip()
+
+    print("\n🧠 Starting trauma? (None / Witnessed Death / Betrayed / Assimilated Encounter)")
+    trauma = input("👤 TRAUMA (or 'none'): ").strip().lower()
+    if trauma in ['', 'none', 'skip']: trauma = "none"
+
     print("\n🤖 ENGINE: Extracting mechanical elements...")
-    extracted = extract_backstory_to_state(backstory_text)
-    
-    if extracted:
-        batch = StateBatch()
-        batch.update('game_state.player.backstory_extractions', extracted)
-        batch.update('game_state.player.phase_status.phase_3_backstory', 'complete')
-        batch.commit()
-        print("✅ Phase 3 Complete! Backstory extracted and archived.")
-    else:
-        print("⚠️ Extraction failed. Please try again.")
+    extracted = extract_backstory_to_state(backstory)
+
+    intimate_data = {"preferences": [], "kinks": [], "hard_limits": [], "soft_limits": [], "sensory_preferences": [], "discovered_partner_traits": []}
+    if intimate:
+        intimate_data["preferences"] = [x.strip() for x in intimate.split(',') if x.strip()]
+
+    batch = StateBatch()
+    batch.update('game_state.player.background', backstory)
+    batch.update('game_state.player.physical_description', phys_desc)
+    batch.update('game_state.player.intimate_profile', intimate_data)
+    batch.update('game_state.player.backstory_extractions', extracted if extracted else {})
+    batch.update('game_state.player.background_story', {"status": "complete", "reference": "MB-CHAR-BACKGROUND"})
+    if trauma != "none":
+        batch.update('game_state.player.traumas', [trauma])
+    batch.update('game_state.player.phase_status.phase_3_backstory', 'complete')
+    batch.update('game_state.player.setup_complete', True)
+    batch.commit()
+
+    archive_to_memory_bank("MB-CHAR-BACKGROUND", {
+        "backstory": backstory[:500], "physical": phys_desc[:200], "trauma": trauma
+    }, "Player backstory and profile", priority="permanent")
+    print("✅ Phase 3 Complete! All setup finished.\n")
 
 # ==============================================================================
-# 14. ROBUST AUTOSAVE SYSTEM
+# 14. OPENING SCENE GENERATOR
+# ==============================================================================
+def generate_opening_scene(master, state):
+    print("\n🤖 ENGINE: Generating opening scene...")
+    player = state['game_state']['player']
+    prompt = f"""Generate the opening scene for a new Seedfall RPG game.
+Player: {player['subspecies']} {player['track']} ({player['rank']}), {player['xenocytos_strain']} strain.
+Location: {player['starting_point']['starting_country']}, Situation: {player['starting_point']['starting_situation']}
+Style: {player['preferences']['narration_perspective']} person, {player['preferences']['tone']} tone, {player['preferences']['pacing']} pacing.
+
+Write a 2-3 paragraph opening scene that:
+1. Establishes the immediate environment and atmosphere.
+2. Hints at the Seedfall world without info-dumping.
+3. Gives the player a clear immediate situation to react to.
+4. Ends with an implicit prompt for the player's first action.
+Do NOT use any [BRACKETED COMMANDS]. Pure narrative."""
+    
+    scene = call_ai("narrative", "You are the Seedfall RPG narrator. Write vivid, immersive prose.", prompt)
+    print("\n" + "="*70)
+    print(scene)
+    print("="*70 + "\n")
+    conversation_history.append(f"Engine: {scene[:150]}")
+
+# ==============================================================================
+# 15. AUTOSAVE & COMMANDS (FIX #5: Added missing commands)
 # ==============================================================================
 def passive_vitals_drain(state):
-    """Automatically drain hunger/thirst based on time passed."""
     turn = state['game_state']['time_tracking']['turn']
-    
     if turn > 0 and turn % PASSIVE_DRAIN_INTERVAL == 0:
-        player = state['game_state']['player']
-        # Drain 2 hunger, 3 thirst per interval
-        player['vitals']['hunger'] = max(0, player['vitals']['hunger'] - 2)
-        player['vitals']['thirst'] = max(0, player['vitals']['thirst'] - 3)
-        
-        # Apply sanity drain in high ELQ
-        if player['current_elq'] >= 15:
-            player['vitals']['sanity'] = max(0, player['vitals']['sanity'] - 1)
-        
-        logger.info(f"⏳ Passive drain applied. Hunger: {player['vitals']['hunger']}, Thirst: {player['vitals']['thirst']}")
-        return True
-    return False
+        p = state['game_state']['player']
+        p['vitals']['hunger'] = max(0, p['vitals']['hunger'] - 2)
+        p['vitals']['thirst'] = max(0, p['vitals']['thirst'] - 3)
+        if p.get('current_elq', 0) >= 15:
+            p['vitals']['sanity'] = max(0, p['vitals']['sanity'] - 1)
+        logger.info(f"⏳ Drain: H={p['vitals']['hunger']} T={p['vitals']['thirst']}")
 
 def force_autosave(state, reason="periodic"):
-    """Force a save to JSONBin regardless of AI commands."""
     try:
-        # Increment turn counter
-        state['game_state']['time_tracking']['turn'] += 1
-        
-        # Apply passive drain
         passive_vitals_drain(state)
-        
-        # Save to JSONBin
         if save_game_state(state):
-            logger.info(f"💾 Autosave successful ({reason})")
+            logger.info(f"💾 Autosave ({reason})")
             return True
         return False
     except Exception as e:
@@ -530,81 +658,167 @@ def force_autosave(state, reason="periodic"):
         return False
 
 def save_on_exit(state):
-    """Final save when player quits."""
-    print("\n💾 Saving final state before exit...")
+    print("\n💾 Saving before exit...")
     if save_game_state(state):
-        print("✅ Game saved successfully. See you next time!")
+        print("✅ Saved. See you next time!")
     else:
-        print("❌ Save failed. Your progress may not be preserved.")
+        print("❌ Save failed!")
+
+def show_help():
+    print("\n╔══════════════════════════════════════════════╗")
+    print("║           SEEDFALL RPG — COMMANDS           ║")
+    print("╠══════════════════════════════════════════════╣")
+    print("║  /status    — Show vitals & energy          ║")
+    print("║  /inventory — Show carried items            ║")
+    print("║  /quests    — Show active quests            ║")
+    print("║  /engine    — Show Synthesis Engine status   ║")
+    print("║  /save      — Manual save                   ║")
+    print("║  /history   — Show recent actions           ║")
+    print("║  /help      — Show this menu                ║")
+    print("║  /quit      — Save & exit                   ║")
+    print("╚══════════════════════════════════════════════╝\n")
+
+def show_inventory(state):
+    p = state['game_state']['player']
+    inv = p.get('inventory', {})
+    res = p.get('resources', {})
+    print(f"\n🎒 RESOURCES: Food={res.get('food',0)}, Water={res.get('water',0)}, Scrip={res.get('scrip',0)}")
+    print(f"📦 CARRIED ({len(inv.get('carried',[]))} items):")
+    for item in inv.get('carried', [])[:20]:
+        print(f"   • {item if isinstance(item, str) else item.get('name','Unknown')}")
+    print()
+
+def show_quests(state):
+    active = state['game_state'].get('quests', {}).get('active', [])
+    print(f"\n📜 ACTIVE QUESTS ({len(active)}):")
+    for q in active[:10]:
+        print(f"   • {q if isinstance(q, str) else q.get('name','Unknown')}")
+    if not active: print("   (none)")
+    print()
+
+def show_engine(state):
+    eng = state['game_state'].get('synthesis_engine', {})
+    gm = eng.get('gender_manifestation', {})
+    print(f"\n🔧 SYNTHESIS ENGINE | Level: {eng.get('level',0)} | Tier: {eng.get('current_tier',1)}")
+    print(f"   Stage: {gm.get('stage_name','?')} | Personality: {gm.get('personality_notes','?')}")
+    print(f"   Cores: {eng.get('core_fuel_reserves',{})}\n")
 
 # ==============================================================================
-# 15. MAIN GAME LOOP
+# 16. MAIN GAME LOOP
 # ==============================================================================
 def game_loop():
-    """Main game loop with robust autosave."""
     print("🌌 Initializing Seedfall RPG Engine...")
-    master = get_master_json()
-    state = get_game_state()
+    try:
+        master = get_master_json()
+        state = get_game_state()
+    except Exception as e:
+        print(f"❌ Init failed: {e}")
+        return
+
     engine = MechanicsEngine(master, state)
-    
-    # Check setup phases
-    if state['game_state']['player']['phase_status']['phase_0_narration'] == 'awaiting':
-        run_phase_0_setup()
-        state = get_game_state()
-    
-    if state['game_state']['player']['phase_status']['phase_3_backstory'] == 'awaiting':
-        run_phase_3_backstory()
-        state = get_game_state()
-    
-    print("\n✅ Engine Ready. Type your action, or '/status' to check vitals, '/save' to save manually.\n")
+
+    # Run ALL 4 setup phases in strict order
+    phases = [
+        ('phase_0_narration', run_phase_0),
+        ('phase_1_starting_point', run_phase_1),
+        ('phase_2_character_build', run_phase_2),
+        ('phase_3_backstory', run_phase_3)
+    ]
+    for phase_key, phase_func in phases:
+        if state['game_state']['player']['phase_status'].get(phase_key) == 'awaiting':
+            phase_func()
+            state = get_game_state()
+            engine = MechanicsEngine(master, state)
+
+    # Generate opening scene if fresh start
+    if state['game_state']['time_tracking']['turn'] == 0:
+        generate_opening_scene(master, state)
+
+    print("✅ Engine Ready. Type /help for commands.\n")
 
     while True:
-        user_input = input("👤 YOU: ").strip()
-        
-        # Handle exit with save
-        if user_input.lower() in ['/quit', 'exit']:
+        try:
+            user_input = input("👤 YOU: ").strip()
+        except (EOFError, KeyboardInterrupt):
             save_on_exit(state)
             break
-            
-        if user_input.lower() == '/status':
-            print(json.dumps(state['game_state']['player']['vitals'], indent=2))
+
+        if not user_input:
             continue
-        
-        # Handle manual save command
-        if user_input.lower() == '/save':
-            if force_autosave(state, reason="manual"):
-                print("💾 Game saved manually!")
+
+        cmd = user_input.lower()
+
+        # Commands
+        if cmd in ['/quit', 'exit', '/exit']:
+            save_on_exit(state)
+            break
+        if cmd == '/help':
+            show_help()
             continue
-            
+        if cmd == '/status':
+            p = state['game_state']['player']
+            print(f"\n📊 HP: {p['vitals']['hp']} | Sanity: {p['vitals']['sanity']} | H: {p['vitals']['hunger']} | T: {p['vitals']['thirst']}")
+            print(f"⚡ S: {p['energy']['S']} | Rc: {p['energy']['Rc']} | M: {p['energy']['M']} | Exhaustion: {p['exhaustion_level']}")
+            print(f"📍 {p.get('location','?')} | ELQ: {p.get('current_elq',0)} | {p.get('current_weather','?')}\n")
+            continue
+        if cmd == '/inventory':
+            show_inventory(state)
+            continue
+        if cmd == '/quests':
+            show_quests(state)
+            continue
+        if cmd == '/engine':
+            show_engine(state)
+            continue
+        if cmd == '/save':
+            if force_autosave(state, "manual"):
+                print("💾 Saved!\n")
+            continue
+        if cmd == '/history':
+            print("\n📜 Recent actions:")
+            for h in list(conversation_history)[-6:]:
+                print(f"   • {h[:80]}")
+            print()
+            continue
+
+        # Process action
         sanitized = html.escape(user_input)[:500]
+        conversation_history.append(f"Player: {sanitized}")
+
         system_prompt = build_system_prompt(master, state, sanitized)
-        
         print("🤖 ENGINE: Processing...")
         raw_ai = call_ai("narrative", system_prompt, f"Player Action: {sanitized}")
-        
+
         batch = StateBatch()
         clean_narrative, feedback = parse_and_execute_ai_commands(raw_ai, engine, batch)
-        
-        # Apply AI-commanded state changes
+
         if batch.changes:
             batch.commit()
             state = get_game_state()
-        
-        # ROBUST AUTOSAVE: Periodic save every N turns
+            engine = MechanicsEngine(master, state)
+
+        # Increment turn ONCE here
+        state['game_state']['time_tracking']['turn'] += 1
         current_turn = state['game_state']['time_tracking']['turn']
-        if current_turn > 0 and current_turn % AUTOSAVE_INTERVAL == 0:
-            force_autosave(state, reason=f"turn {current_turn}")
-            state = get_game_state()  # Refresh after autosave
-            
+
+        # Periodic autosave (does NOT increment turn)
+        if current_turn % AUTOSAVE_INTERVAL == 0:
+            force_autosave(state, f"turn {current_turn}")
+            state = get_game_state()
+            engine = MechanicsEngine(master, state)
+
+        conversation_history.append(f"Engine: {clean_narrative[:150]}")
+
         print("\n" + "="*70)
         for fb in feedback:
             print(fb)
-        print("-" * 70)
+        if feedback:
+            print("-"*70)
         print(clean_narrative)
         print("="*70 + "\n")
 
 # ==============================================================================
-# 16. MAIN EXECUTION
+# 17. MAIN
 # ==============================================================================
 if __name__ == "__main__":
     game_loop()
