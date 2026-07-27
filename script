@@ -11,16 +11,17 @@ import ast
 from collections import deque
 from google.colab import userdata
 from simpleeval import simple_eval, NameNotDefined
+from IPython.display import HTML, display
 
 # ==============================================================================
-# 1. CONFIGURATION (UPDATE THESE 3 LINES)
+# 1. CONFIGURATION (UPDATE THESE 3 LINES WITH YOUR ACTUAL DATA)
 # ==============================================================================
-GITHUB_JSON_URL = 'https://raw.githubusercontent.com/YOUR_USERNAME/seedfall-rpg-engine/main/MASTER_JSON.json'
+GITHUB_JSON_URL = 'https://raw.githubusercontent.com/jpplaysalot-png/seedfall-rpg-engine/refs/heads/main/MASTER_JSON.json'
 MAIN_STATE_BIN_ID = 'YOUR_MAIN_STATE_BIN_ID_HERE'
 MEMORY_BANK_BIN_ID = 'YOUR_MEMORY_BANK_BIN_ID_HERE'
 
 # ==============================================================================
-# 2. MULTI-MODEL CONFIGURATION
+# 2. MULTI-MODEL CONFIGURATION (Credit-Optimized)
 # ==============================================================================
 MODELS = {
     "narrative": {
@@ -57,7 +58,7 @@ MODELS = {
 
 AUTOSAVE_INTERVAL = 5
 PASSIVE_DRAIN_INTERVAL = 10
-CONVERSATION_HISTORY_SIZE = 6  # FIX #3: Keep last 6 exchanges for context
+CONVERSATION_HISTORY_SIZE = 6
 
 # ==============================================================================
 # 3. SECRETS & LOGGING
@@ -73,11 +74,77 @@ except Exception as e:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# FIX #3: Conversation history buffer
 conversation_history = deque(maxlen=CONVERSATION_HISTORY_SIZE)
 
 # ==============================================================================
-# 4. ROBUST NETWORKING
+# 4. DISPLAY FUNCTIONS (Tasteful Vertical Rendering)
+# ==============================================================================
+def display_story(text):
+    """Renders the AI narrative in a tasteful, constrained reading column."""
+    safe_text = html.escape(text)
+    html_content = f"""
+    <div style="
+        max-width: 850px;
+        margin: 15px auto;
+        padding: 25px;
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+        border-radius: 8px;
+        border-left: 4px solid #4a90e2;
+        font-family: 'Georgia', 'Merriweather', 'Times New Roman', serif;
+        font-size: 16px;
+        line-height: 1.7;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    ">{safe_text}</div>
+    """
+    display(HTML(html_content))
+
+def display_hud(text):
+    """Renders the HUD in a centered, monospace terminal-style block."""
+    safe_text = html.escape(text)
+    html_content = f"""
+    <div style="
+        max-width: 850px;
+        margin: 15px auto;
+        padding: 15px;
+        background-color: #121212;
+        color: #4ec9b0;
+        border-radius: 8px;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.4;
+        white-space: pre;
+        word-wrap: break-word;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        border: 1px solid #333;
+    ">{safe_text}</div>
+    """
+    display(HTML(html_content))
+
+def display_system(text):
+    """Renders system feedback in a subtle info block."""
+    safe_text = html.escape(text)
+    html_content = f"""
+    <div style="
+        max-width: 850px;
+        margin: 10px auto;
+        padding: 12px 20px;
+        background-color: #1a2332;
+        color: #8ab4f8;
+        border-radius: 6px;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        border-left: 3px solid #8ab4f8;
+    ">{safe_text}</div>
+    """
+    display(HTML(html_content))
+
+# ==============================================================================
+# 5. ROBUST NETWORKING
 # ==============================================================================
 def robust_request(method, url, max_retries=3, **kwargs):
     kwargs.setdefault('timeout', 15)
@@ -86,6 +153,9 @@ def robust_request(method, url, max_retries=3, **kwargs):
             response = requests.request(method, url, **kwargs)
             if response.status_code == 200:
                 return response
+            elif response.status_code == 404:
+                logger.error(f"404 Not Found: {url}")
+                raise Exception(f"Resource not found: {url}")
             elif response.status_code in [429, 500, 502, 503, 504]:
                 time.sleep(2 ** attempt)
                 continue
@@ -99,7 +169,7 @@ def robust_request(method, url, max_retries=3, **kwargs):
     raise Exception(f"Failed after {max_retries} attempts")
 
 # ==============================================================================
-# 5. MASTER_JSON CACHING
+# 6. MASTER_JSON CACHING
 # ==============================================================================
 _master_json_cache = None
 _cache_timestamp = 0
@@ -110,23 +180,32 @@ def get_master_json():
         return _master_json_cache
     logger.info("Fetching MASTER_JSON from GitHub...")
     response = robust_request('GET', GITHUB_JSON_URL)
-    _master_json_cache = response.json()
+    try:
+        _master_json_cache = response.json()
+    except json.JSONDecodeError as e:
+        logger.error(f"MASTER_JSON parse error: {e}")
+        print(f"❌ MASTER_JSON has a syntax error: {e}")
+        print("   Please validate your JSON at https://jsonlint.com/")
+        raise
     _cache_timestamp = time.time()
     logger.info("MASTER_JSON loaded and cached.")
     return _master_json_cache
 
 # ==============================================================================
-# 6. STATE MANAGEMENT
+# 7. STATE MANAGEMENT
 # ==============================================================================
 def get_game_state():
     try:
         url = f"https://api.jsonbin.io/v3/b/{MAIN_STATE_BIN_ID}/latest"
         headers = {"X-Master-Key": JSONBIN_KEY}
         response = robust_request('GET', url, headers=headers)
-        return response.json()['record']
+        data = response.json()
+        if 'record' not in data:
+            raise Exception("Invalid response: missing 'record' key")
+        return data['record']
     except Exception as e:
         logger.error(f"Failed to fetch game state: {e}")
-        print("⚠️ Could not reach JSONBin. Retrying in 5 seconds...")
+        print(f"⚠️ Could not reach JSONBin: {e}. Retrying in 5 seconds...")
         time.sleep(5)
         return get_game_state()
 
@@ -152,19 +231,23 @@ class StateBatch:
         for path, value in self.changes:
             parts = path.split('.')
             obj = self.state
-            for part in parts[:-1]:
+            try:
+                for part in parts[:-1]:
+                    if isinstance(obj, dict):
+                        obj = obj.setdefault(part, {})
+                    else:
+                        logger.warning(f"Cannot traverse path {path}: {part} is not a dict")
+                        break
                 if isinstance(obj, dict):
-                    obj = obj.setdefault(part, {})
-                else:
-                    break
-            if isinstance(obj, dict):
-                obj[parts[-1]] = value
-        save_game_state(self.state)
-        logger.info(f"Batch saved {len(self.changes)} changes")
+                    obj[parts[-1]] = value
+            except Exception as e:
+                logger.error(f"Failed to update path {path}: {e}")
+        if save_game_state(self.state):
+            logger.info(f"✅ Batch saved {len(self.changes)} changes")
         self.changes = []
 
 # ==============================================================================
-# 7. MEMORY BANK & PRUNING
+# 8. MEMORY BANK & PRUNING
 # ==============================================================================
 def get_memory_bank():
     for attempt in range(3):
@@ -199,6 +282,9 @@ def prune_memory_bank(memory_bank):
     return pruned
 
 def archive_to_memory_bank(code, data, summary="", priority="persistent"):
+    if not re.match(r'^[A-Z0-9\-]+$', code):
+        logger.warning(f"Invalid archive code format: {code}")
+        return False
     logger.info(f"Archiving {code} (Priority: {priority})...")
     memory_bank = get_memory_bank()
     state = get_game_state()
@@ -208,24 +294,93 @@ def archive_to_memory_bank(code, data, summary="", priority="persistent"):
         "priority": priority,
         "archived_at": state['game_state']['time_tracking']
     }
-    
-    # FIX #6: Sync the index in game_state
     try:
-        prefix = code.split('-')[0] + '-' + code.split('-')[1] if '-' in code else code
-        state['game_state']['memory_bank_index'][prefix] = {
-            "status": "active",
-            "summary": summary[:100]
-        }
+        parts = code.split('-')
+        prefix = parts[0] + '-' + parts[1] if len(parts) >= 2 else code
+        state['game_state']['memory_bank_index'][prefix] = {"status": "active", "summary": summary[:100]}
         save_game_state(state)
     except Exception:
         pass
-
     if len(json.dumps(memory_bank)) > 400000:
         memory_bank = prune_memory_bank(memory_bank)
     return save_memory_bank(memory_bank)
 
 # ==============================================================================
-# 8. DYNAMIC MECHANICS ENGINE
+# 9. TEMPORAL CONTENT GATING (Day-based restrictions)
+# ==============================================================================
+def get_temporal_restrictions(state):
+    """Returns content restrictions based on current day since Day 34."""
+    day = state['game_state']['time_tracking']['day']
+    
+    if day <= 7:
+        return {
+            "era": "survival_chaos",
+            "max_beast_tier": "F",
+            "max_npc_track": "baseline",
+            "max_assimilated_tier": "none",
+            "max_elq": 5,
+            "factions_allowed": False,
+            "mutations_allowed": False,
+            "enhanced_awakened_allowed": False,
+            "narrative_focus": "Immediate aftermath. Pure survival. No evolution yet. Player has ZERO knowledge of Xenocytos, ELQ, or factions.",
+            "forbidden": "Enhanced/Awakened humanoids, Assimilated (any tier), S-Class or higher beasts, Organized factions, ELQ above 5, Mutations"
+        }
+    elif day <= 30:
+        return {
+            "era": "early_adaptation",
+            "max_beast_tier": "D",
+            "max_npc_track": "baseline",
+            "max_assimilated_tier": "none",
+            "max_elq": 15,
+            "factions_allowed": False,
+            "mutations_allowed": False,
+            "enhanced_awakened_allowed": False,
+            "narrative_focus": "First mutations appear. Factions begin forming. Baseline humans with minor Xenocytos symptoms. D-Class beasts. Small survivor groups.",
+            "forbidden": "Enhanced/Awakened tracks, Assimilated Mimics or higher, A-Class or higher beasts, Named factions with territory"
+        }
+    elif day <= 90:
+        return {
+            "era": "faction_formation",
+            "max_beast_tier": "C",
+            "max_npc_track": "enhanced",
+            "max_assimilated_tier": "mimic",
+            "max_elq": 50,
+            "factions_allowed": True,
+            "max_factions": 3,
+            "mutations_allowed": True,
+            "enhanced_awakened_allowed": True,
+            "narrative_focus": "Factions emerge. Evolution accelerates. Enhanced track humans. C-Class beasts. Assimilated Drones/Mimics. Named factions (2-3 max).",
+            "forbidden": "Awakened track, Assimilated Harvesters or higher, S-Class beasts, Major faction wars"
+        }
+    elif day <= 365:
+        return {
+            "era": "established_world",
+            "max_beast_tier": "A",
+            "max_npc_track": "awakened",
+            "max_assimilated_tier": "sovereign",
+            "max_elq": 200,
+            "factions_allowed": True,
+            "mutations_allowed": True,
+            "enhanced_awakened_allowed": True,
+            "narrative_focus": "World stabilizes. Power scales emerge. Awakened track humans. B/A-Class beasts. Assimilated Harvesters/Sovereigns. Multiple factions.",
+            "forbidden": "SS-Class entities, Assimilated Progenitors/Architects, SSS-Class beasts"
+        }
+    else:
+        return {
+            "era": "late_game",
+            "max_beast_tier": "SSS",
+            "max_npc_track": "awakened",
+            "max_assimilated_tier": "architect",
+            "max_elq": 999,
+            "factions_allowed": True,
+            "mutations_allowed": True,
+            "enhanced_awakened_allowed": True,
+            "narrative_focus": "Apex entities emerge. World fully transformed. All tiers unlocked. SS-Class entities (rare). Major faction wars, ecological collapse.",
+            "forbidden": "None - all content unlocked"
+        }
+
+# ==============================================================================
+# 10. DYNAMIC MECHANICS ENGINE
 # ==============================================================================
 class MechanicsEngine:
     def __init__(self, master_json, game_state):
@@ -244,7 +399,6 @@ class MechanicsEngine:
                 return 0
         return val if isinstance(val, (int, float)) else 0
 
-    # FIX #4: Check both resources dict AND inventory list
     def check_inventory(self, item_name):
         res = self.get_var(f'player.resources.{item_name}')
         if res > 0:
@@ -257,23 +411,14 @@ class MechanicsEngine:
 
     def calculate(self, formula_str):
         safe_names = {
-            'STR': self.get_var('player.abilities.STR'),
-            'DEX': self.get_var('player.abilities.DEX'),
-            'CON': self.get_var('player.abilities.CON'),
-            'INT': self.get_var('player.abilities.INT'),
-            'WIS': self.get_var('player.abilities.WIS'),
-            'CHA': self.get_var('player.abilities.CHA'),
-            'exhaustion_level': self.get_var('player.exhaustion_level'),
-            'current_elq': self.get_var('player.current_elq'),
-            'sanity': self.get_var('player.vitals.sanity'),
-            'hp': self.get_var('player.vitals.hp'),
-            'hunger': self.get_var('player.vitals.hunger'),
-            'thirst': self.get_var('player.vitals.thirst'),
-            'Rc': self.get_var('player.energy.Rc'),
-            'S': self.get_var('player.energy.S'),
-            'M': self.get_var('player.energy.M'),
-            'log': math.log, 'sqrt': math.sqrt,
-            'max': max, 'min': min, 'round': round, 'abs': abs
+            'STR': self.get_var('player.abilities.STR'), 'DEX': self.get_var('player.abilities.DEX'),
+            'CON': self.get_var('player.abilities.CON'), 'INT': self.get_var('player.abilities.INT'),
+            'WIS': self.get_var('player.abilities.WIS'), 'CHA': self.get_var('player.abilities.CHA'),
+            'exhaustion_level': self.get_var('player.exhaustion_level'), 'current_elq': self.get_var('player.current_elq'),
+            'sanity': self.get_var('player.vitals.sanity'), 'hp': self.get_var('player.vitals.hp'),
+            'hunger': self.get_var('player.vitals.hunger'), 'thirst': self.get_var('player.vitals.thirst'),
+            'Rc': self.get_var('player.energy.Rc'), 'S': self.get_var('player.energy.S'), 'M': self.get_var('player.energy.M'),
+            'log': math.log, 'sqrt': math.sqrt, 'max': max, 'min': min, 'round': round, 'abs': abs
         }
         try:
             return round(simple_eval(formula_str, names=safe_names), 2)
@@ -282,7 +427,7 @@ class MechanicsEngine:
             return 0
 
 # ==============================================================================
-# 9. REACT COMMAND PARSER
+# 11. REACT COMMAND PARSER
 # ==============================================================================
 def parse_and_execute_ai_commands(ai_raw_output, engine, state_batch):
     narrative = ai_raw_output
@@ -303,24 +448,16 @@ def parse_and_execute_ai_commands(ai_raw_output, engine, state_batch):
                 num, sides = map(int, dice_part.split('d'))
                 roll_val = sum(random.randint(1, sides) for _ in range(num))
             else:
-                roll_val = 0
-                dice_part = ""
-
+                roll_val, dice_part = 0, ""
             mod_str = match.strip()[len(dice_part):].strip() if dice_part else match.strip()
-            mod_val = 0
-            if mod_str:
-                try:
-                    mod_val = engine.calculate(mod_str)
-                except Exception:
-                    mod_val = 0
-
+            mod_val = engine.calculate(mod_str) if mod_str else 0
             total = roll_val + mod_val
             narrative = narrative.replace(f"[ROLL: {match}]", f"**[System: Rolled {total} ({roll_val}{'+' if mod_val>=0 else ''}{int(mod_val)})]**")
             system_feedback.append(f"🎲 {match} = {total}")
         except Exception:
             narrative = narrative.replace(f"[ROLL: {match}]", "**[System: Invalid roll]**")
 
-    # 3. [CHECK_RESOURCE: ...] (Uses FIX #4)
+    # 3. [CHECK_RESOURCE: ...]
     for match in re.findall(r'\[CHECK_RESOURCE:\s*(\w+):\s*(\d+)\]', narrative, re.IGNORECASE):
         item, amount = match
         current = engine.check_inventory(item)
@@ -328,12 +465,10 @@ def parse_and_execute_ai_commands(ai_raw_output, engine, state_batch):
         narrative = narrative.replace(f"[CHECK_RESOURCE: {item}: {amount}]", f"**[System: '{item}' ({amount}) = {status}]**")
         system_feedback.append(f"🎒 {item} ({amount}) = {status}")
 
-    # 4. [STATE_UPDATE: ...] (Your improved brace-counting regex)
+    # 4. [STATE_UPDATE: ...] (Brace-counting with correct slice)
     update_pattern = r'\[STATE_UPDATE:\s*'
     for m in re.finditer(update_pattern, narrative, re.IGNORECASE):
-        start = m.end()
-        brace_count = 0
-        end = start
+        start, brace_count, end = m.end(), 0, m.end()
         for i in range(start, len(narrative)):
             if narrative[i] == '{':
                 brace_count += 1
@@ -343,27 +478,25 @@ def parse_and_execute_ai_commands(ai_raw_output, engine, state_batch):
                     end = i + 1
                     break
         if end > start:
-            json_str = narrative[start:end]
+            full_match = narrative[m.start():end]
             try:
-                update_dict = json.loads(json_str)
+                update_dict = json.loads(narrative[start:end])
                 for path, value in update_dict.items():
                     state_batch.update(path, value)
-                full_match = narrative[m.start():end + 1]
                 narrative = narrative.replace(full_match, "**[System: State Updated]**")
             except json.JSONDecodeError:
-                full_match = narrative[m.start():end + 1]
                 narrative = narrative.replace(full_match, "**[System: Invalid Update]**")
 
     # 5. [ARCHIVE: ...]
     for match in re.findall(r'\[ARCHIVE:\s*(.*?),\s*(.*?),\s*(.*?)\]', narrative, re.IGNORECASE):
         code, priority, summary = [x.strip() for x in match]
-        archive_to_memory_bank(code, {"action": "archived"}, summary, priority)
-        narrative = narrative.replace(f"[ARCHIVE: {match[0]}, {match[1]}, {match[2]}]", "**[System: Archived]**")
+        if archive_to_memory_bank(code, {"action": "archived"}, summary, priority):
+            narrative = narrative.replace(f"[ARCHIVE: {match[0]}, {match[1]}, {match[2]}]", "**[System: Archived]**")
 
     return narrative, system_feedback
 
 # ==============================================================================
-# 10. AI INTEGRATION
+# 12. AI INTEGRATION WITH MULTI-MODEL ROUTING
 # ==============================================================================
 def call_ai(task_type, system_prompt, user_prompt, temperature_override=None, max_tokens_override=None):
     config = MODELS.get(task_type, MODELS["narrative"])
@@ -397,7 +530,7 @@ def call_ai(task_type, system_prompt, user_prompt, temperature_override=None, ma
     return "[ENGINE ERROR: AI unavailable]"
 
 # ==============================================================================
-# 11. DYNAMIC CONTEXT INJECTOR (FIX #3: includes conversation history)
+# 13. DYNAMIC CONTEXT INJECTOR (with Temporal Gating)
 # ==============================================================================
 def build_system_prompt(master_json, game_state, user_action):
     player = game_state['game_state']['player']
@@ -405,7 +538,9 @@ def build_system_prompt(master_json, game_state, user_action):
     engine_state = game_state['game_state']['synthesis_engine']
     prefs = player.get('preferences', {})
 
-    # FIX #3: Build recent context string
+    # Get temporal restrictions
+    temporal = get_temporal_restrictions(game_state)
+
     history_context = ""
     if conversation_history:
         recent = list(conversation_history)[-4:]
@@ -419,42 +554,64 @@ CORE DIRECTIVES:
 COMMAND PROTOCOL (MUST use for math/rolls/state):
 {json.dumps(master_json['engine_rules']['system_command_protocol'])}
 
+⚠️ TEMPORAL CONTENT GATING (CRITICAL - VIOLATION = GAME BREAK):
+Current Day: {time_data['day']} (Days since Day 34 bombardment)
+Era: {temporal['era']}
+Max Beast Tier: {temporal['max_beast_tier']}
+Max NPC Track: {temporal['max_npc_track']}
+Max Assimilated Tier: {temporal['max_assimilated_tier']}
+Max ELQ: {temporal['max_elq']}
+Factions Allowed: {temporal['factions_allowed']}
+Mutations Allowed: {temporal['mutations_allowed']}
+Narrative Focus: {temporal['narrative_focus']}
+FORBIDDEN CONTENT: {temporal['forbidden']}
+
+DO NOT generate content above these tiers. If player encounters something impossible, describe it as 'unidentified anomaly' or 'strange phenomenon' without naming it.
+
 CURRENT GAME STATE:
 - Time: Day {time_data['day']}, Year {time_data['year']}, Turn {time_data['turn']}
 - Location: {player.get('location','?')} | Country: {player.get('current_country','?')}
 - Weather: {player.get('current_weather','?')} | ELQ: {player.get('current_elq',0)}
-- Vitals: HP={player['vitals']['hp']}, Hunger={player['vitals']['hunger']}, Thirst={player['vitals']['thirst']}, Sanity={player['vitals']['sanity']}
-- Energy: S={player['energy']['S']}, Rc={player['energy']['Rc']}, M={player['energy']['M']}
-- Exhaustion: Level {player['exhaustion_level']}
-- Subspecies: {player['subspecies']} | Track: {player['track']} | Rank: {player['rank']}
+- Vitals: HP={player['vitals'].get('hp',0)}/{player['vitals'].get('max_hp',100)}, Sanity={player['vitals'].get('sanity',0)}/{player['vitals'].get('max_sanity',100)}, Hunger={player['vitals'].get('hunger',0)}/{player['vitals'].get('max_hunger',100)}, Thirst={player['vitals'].get('thirst',0)}/{player['vitals'].get('max_thirst',100)}
+- Energy: S={player['energy'].get('S',0)}/{player['energy'].get('max_S',100)}, Rc={player['energy'].get('Rc',0)}/{player['energy'].get('max_Rc',100)}, M={player['energy'].get('M',0)}/{player['energy'].get('max_M',100)}
+- Exhaustion: Level {player.get('exhaustion_level',0)}
+- Subspecies: {player.get('subspecies','?')} | Track: {player.get('track','?')} | Rank: {player.get('rank','?')}
 - Engine Stage: {engine_state.get('gender_manifestation',{}).get('stage_name','Pure Computation')}
 
-NARRATION STYLE: Perspective={prefs.get('narration_perspective','second_person')}, Tone={prefs.get('tone','neutral')}, Detail={prefs.get('detail_level','moderate')}, Explicit={prefs.get('explicit_content_level','fully_explicit')}
+NARRATION STYLE: Genre={prefs.get('genre_focus','balanced')}, Perspective={prefs.get('narration_perspective','second_person')}, Tone={prefs.get('tone','neutral')}, Pacing={prefs.get('pacing','moderate')}, Detail={prefs.get('detail_level','moderate')}, Explicit={prefs.get('explicit_content_level','fully_explicit')}, Dialogue={prefs.get('dialogue_style','casual')}
 {history_context}
 """
     action = user_action.lower()
     dynamic_rules = []
-    if any(w in action for w in ['fight', 'attack', 'defend', 'enemy', 'combat', 'kill']):
+    if any(w in action for w in ['fight', 'attack', 'defend', 'enemy', 'combat', 'kill', 'hit', 'shoot']):
         dynamic_rules.append(json.dumps(master_json['engine_rules']['game_mechanics']['blind_roll_protocol']))
-    if any(w in action for w in ['craft', 'build', 'make', 'combine']):
+        dynamic_rules.append(json.dumps(master_json['engine_rules']['combat_tactics_system']['status_effects']))
+    if any(w in action for w in ['craft', 'build', 'make', 'combine', 'forge']):
         dynamic_rules.append(json.dumps(master_json['engine_rules']['crafting_unification']['first_principles_crafting']))
-    if any(w in action for w in ['talk', 'seduce', 'persuade', 'npc', 'kiss', 'intimate']):
+    if any(w in action for w in ['talk', 'seduce', 'persuade', 'npc', 'kiss', 'intimate', 'flirt', 'touch']):
         dynamic_rules.append(json.dumps(master_json['engine_rules']['eroge_mechanics']['prose_scaling']))
-    if any(w in action for w in ['travel', 'walk', 'explore', 'search']):
+        dynamic_rules.append(json.dumps(master_json['engine_rules']['npc_dialogue_rules']['dialogue_derivation']))
+    if any(w in action for w in ['travel', 'walk', 'explore', 'search', 'scout', 'move']):
         dynamic_rules.append(json.dumps(master_json['engine_rules']['environmental_system']['weather_seasonal_system']))
+    if any(w in action for w in ['rest', 'sleep', 'camp', 'eat', 'drink']):
+        dynamic_rules.append(json.dumps(master_json['engine_rules']['psychological_system']['sanity_mechanics']['sanity_recovery']))
 
     if dynamic_rules:
         base += "\nACTIVE RULES:\n" + "\n---\n".join(dynamic_rules)
 
+    base += "\n\nINSTRUCTIONS:\n1. Read the player's action carefully.\n2. If the action requires a skill check, combat roll, or resource check, output the appropriate [ROLL] or [CHECK_RESOURCE] command FIRST.\n3. If the action changes vitals, resources, or location, output [STATE_UPDATE] with the new values.\n4. After all commands, write the narrative prose describing the outcome.\n5. Keep responses focused and detailed. Do NOT resolve multi-step actions in one turn.\n6. Do NOT generate ASCII art, HUDs, or status screens. The Python engine handles all UI rendering.\n7. STRICTLY ENFORCE temporal restrictions. Do NOT generate forbidden content.\n"
     return base
 
 # ==============================================================================
-# 12. BACKSTORY EXTRACTION
+# 14. BACKSTORY EXTRACTION
 # ==============================================================================
 def extract_backstory_to_state(text):
-    prompt = """Extract ONLY valid JSON from this backstory. No prose.
+    prompt = """Extract ONLY valid JSON from this backstory. No prose. No markdown.
 {"characters_mentioned":[],"locations_mentioned":[],"skills_from_background":[],"goals_generated":[],"vows_sworn":[],"traumas_applied":[],"relationships":[],"possessions":[]}"""
     raw = call_ai("parsing", prompt, text)
+    if raw == "[ENGINE ERROR: AI unavailable]":
+        logger.error("AI unavailable for backstory extraction")
+        return {}
     try:
         clean = re.sub(r'^```(?:json)?\s*', '', raw.strip())
         clean = re.sub(r'\s*```$', '', clean)
@@ -466,30 +623,28 @@ def extract_backstory_to_state(text):
     return {}
 
 # ==============================================================================
-# 13. CHARACTER CREATION SETUP (FIX #1 & #2 applied)
+# 15. CHARACTER CREATION SETUP (All 4 Phases)
 # ==============================================================================
 def run_phase_0():
-    print("\n" + "="*70)
-    print("🌌 PHASE 0 — NARRATION STYLE")
-    print("="*70)
+    print("\n" + "="*70 + "\n🌌 PHASE 0 — NARRATION STYLE\n" + "="*70)
     questions = [
-        ("genre_focus", "Genre? (Action/Horror/Erotic/Survival/Political/Balanced)", "balanced"),
-        ("narration_perspective", "Perspective? (Second/Third/First Person)", "second_person"),
-        ("tone", "Tone? (Dark & Gritty/Hopeful/Neutral/Comedic)", "neutral"),
-        ("pacing", "Pacing? (Slow Burn/Moderate/Fast-Paced)", "moderate"),
-        ("detail_level", "Detail? (Minimalist/Moderate/Highly Detailed)", "moderate"),
-        ("explicit_content_level", "Explicit? (None/Suggestive/Moderate/Full/Extreme)", "fully_explicit"),
-        ("dialogue_style", "Dialogue? (Minimal/Casual/Detailed)", "casual")
+        ("genre_focus", "Genre? (Action/Horror/Erotic/Survival/Political/Balanced — or mix, e.g. 'balanced with emphasis on comedy and erotic')", "balanced"),
+        ("narration_perspective", "Perspective? (Second Person 'You' / Third Person 'Name' / First Person 'I')", "second_person"),
+        ("tone", "Tone? (Dark & Gritty / Hopeful / Neutral / Comedic)", "neutral"),
+        ("pacing", "Pacing? (Slow Burn / Moderate / Fast-Paced)", "moderate"),
+        ("detail_level", "Detail? (Minimalist / Moderate / Highly Detailed)", "moderate"),
+        ("explicit_content_level", "Explicit? (None / Suggestive / Moderate / Fully Explicit / Extreme)", "fully_explicit"),
+        ("dialogue_style", "Dialogue? (Minimal / Casual / Detailed)", "casual")
     ]
     prefs = {}
     for key, q, default in questions:
         print(f"❓ {q}")
-        ans = html.escape(input("👤 YOU: ").strip())[:100]
-        if ans.lower() in ['default','skip','']:
+        ans = input("👤 YOU: ").strip()[:200]
+        if ans.lower() in ['default', 'skip', '']:
             ans = default
             print(f"   ⚙️ Default: {ans}")
         prefs[key] = ans
-        print("-"*70)
+        print("-" * 70)
     batch = StateBatch()
     batch.update('game_state.player.preferences', prefs)
     batch.update('game_state.player.phase_status.phase_0_narration', 'complete')
@@ -497,9 +652,7 @@ def run_phase_0():
     print("✅ Phase 0 Complete!\n")
 
 def run_phase_1():
-    print("="*70)
-    print("🌌 PHASE 1 — STARTING POINT")
-    print("="*70)
+    print("="*70 + "\n🌌 PHASE 1 — STARTING POINT\n" + "="*70)
     questions = [
         ("starting_country", "Location? (Japan/USA/Middle East/Europe/Africa/South America/Custom/Random)", "random"),
         ("starting_situation", "Situation? (Sanctuary/Wilderness/Ruins/Captured/Rebirth)", "sanctuary")
@@ -507,12 +660,12 @@ def run_phase_1():
     sp = {}
     for key, q, default in questions:
         print(f"❓ {q}")
-        ans = html.escape(input("👤 YOU: ").strip())[:100]
-        if ans.lower() in ['default','skip','']:
+        ans = input("👤 YOU: ").strip()[:200]
+        if ans.lower() in ['default', 'skip', '']:
             ans = default
             print(f"   ⚙️ Default: {ans}")
         sp[key] = ans
-        print("-"*70)
+        print("-" * 70)
     batch = StateBatch()
     batch.update('game_state.player.starting_point', sp)
     batch.update('game_state.player.current_country', sp['starting_country'])
@@ -521,10 +674,7 @@ def run_phase_1():
     print("✅ Phase 1 Complete!\n")
 
 def run_phase_2():
-    """FIX #2: Initialize abilities based on choices."""
-    print("="*70)
-    print("🌌 PHASE 2 — CHARACTER BUILD")
-    print("="*70)
+    print("="*70 + "\n🌌 PHASE 2 — CHARACTER BUILD\n" + "="*70)
     questions = [
         ("subspecies", "Subspecies? (Terran/Lithari/Sylvan)", "terran"),
         ("track", "Track? (Baseline/Enhanced/Awakened)", "baseline"),
@@ -534,25 +684,24 @@ def run_phase_2():
     cb = {}
     for key, q, default in questions:
         print(f"❓ {q}")
-        ans = html.escape(input("👤 YOU: ").strip())[:100]
-        if ans.lower() in ['default','skip','']:
+        ans = input("👤 YOU: ").strip()[:100]
+        if ans.lower() in ['default', 'skip', '']:
             ans = default
             print(f"   ⚙️ Default: {ans}")
         cb[key] = ans.lower()
-        print("-"*70)
+        print("-" * 70)
 
-    # Calculate base stats
-    base_stats = {"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10}
+    base_stats = {"STR": 10, "DEX": 10, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10}
     if cb['subspecies'] == 'lithari':
         base_stats['CON'] += 4; base_stats['STR'] += 2
     elif cb['subspecies'] == 'sylvan':
         base_stats['WIS'] += 3; base_stats['INT'] += 2
     if cb['track'] == 'enhanced':
-        base_stats = {k: v+3 for k, v in base_stats.items()}
+        base_stats = {k: v + 3 for k, v in base_stats.items()}
     elif cb['track'] == 'awakened':
-        base_stats = {k: v+6 for k, v in base_stats.items()}
-    rank_bonus = {'f':0, 'e':2, 'd':4}.get(cb['starting_rank'], 0)
-    base_stats = {k: v+rank_bonus for k, v in base_stats.items()}
+        base_stats = {k: v + 6 for k, v in base_stats.items()}
+    rank_bonus = {'f': 0, 'e': 2, 'd': 4}.get(cb['starting_rank'], 0)
+    base_stats = {k: v + rank_bonus for k, v in base_stats.items()}
 
     batch = StateBatch()
     batch.update('game_state.player.subspecies', cb['subspecies'])
@@ -565,14 +714,12 @@ def run_phase_2():
     print(f"✅ Phase 2 Complete! Stats: {base_stats}\n")
 
 def run_phase_3():
-    """FIX #1: Ask ALL required Phase 3 questions."""
-    print("="*70)
-    print("🌌 PHASE 3 — BACKSTORY & PROFILE")
-    print("="*70)
-
-    print("\n📖 Tell me your backstory (2-4 paragraphs):")
-    print("  1) Who were you before the Seedfall?  2) What happened during the 34 days?")
-    print("  3) Why did the Engine choose you?  4) Mention one important person/place/goal.\n")
+    print("="*70 + "\n🌌 PHASE 3 — BACKSTORY & PROFILE\n" + "="*70)
+    print("📖 Tell me your backstory (2-4 paragraphs):")
+    print("  1) Who were you before the Seedfall?")
+    print("  2) What happened during the 34 days?")
+    print("  3) Why did the Engine choose you?")
+    print("  4) Mention at least one important person, place, or unresolved goal.\n")
     backstory = input("👤 BACKSTORY: ").strip()
 
     print("\n🪞 Describe your physical appearance (height, build, features, scars, mutations):\n")
@@ -583,7 +730,8 @@ def run_phase_3():
 
     print("\n🧠 Starting trauma? (None / Witnessed Death / Betrayed / Assimilated Encounter)")
     trauma = input("👤 TRAUMA (or 'none'): ").strip().lower()
-    if trauma in ['', 'none', 'skip']: trauma = "none"
+    if trauma in ['', 'none', 'skip']:
+        trauma = "none"
 
     print("\n🤖 ENGINE: Extracting mechanical elements...")
     extracted = extract_backstory_to_state(backstory)
@@ -610,40 +758,44 @@ def run_phase_3():
     print("✅ Phase 3 Complete! All setup finished.\n")
 
 # ==============================================================================
-# 14. OPENING SCENE GENERATOR
+# 16. OPENING SCENE GENERATOR
 # ==============================================================================
 def generate_opening_scene(master, state):
     print("\n🤖 ENGINE: Generating opening scene...")
     player = state['game_state']['player']
+    temporal = get_temporal_restrictions(state)
+    
     prompt = f"""Generate the opening scene for a new Seedfall RPG game.
-Player: {player['subspecies']} {player['track']} ({player['rank']}), {player['xenocytos_strain']} strain.
-Location: {player['starting_point']['starting_country']}, Situation: {player['starting_point']['starting_situation']}
-Style: {player['preferences']['narration_perspective']} person, {player['preferences']['tone']} tone, {player['preferences']['pacing']} pacing.
+Player: {player.get('subspecies','terran')} {player.get('track','baseline')} ({player.get('rank','F')}), {player.get('xenocytos_strain','symbiont')} strain.
+Location: {player.get('starting_point',{}).get('starting_country','random')}, Situation: {player.get('starting_point',{}).get('starting_situation','sanctuary')}
+Style: {player.get('preferences',{}).get('narration_perspective','second_person')} person, {player.get('preferences',{}).get('tone','neutral')} tone, {player.get('preferences',{}).get('pacing','moderate')} pacing.
+Genre: {player.get('preferences',{}).get('genre_focus','balanced')}
+
+TEMPORAL CONTEXT: Day {state['game_state']['time_tracking']['day']} - Era: {temporal['era']}
+Narrative Focus: {temporal['narrative_focus']}
 
 Write a 2-3 paragraph opening scene that:
-1. Establishes the immediate environment and atmosphere.
-2. Hints at the Seedfall world without info-dumping.
+1. Establishes the immediate environment and atmosphere appropriate for Day {state['game_state']['time_tracking']['day']}.
+2. Reflects the {temporal['era']} era (no advanced evolution on Day 1-7, no factions until Day 31+, etc.).
 3. Gives the player a clear immediate situation to react to.
 4. Ends with an implicit prompt for the player's first action.
-Do NOT use any [BRACKETED COMMANDS]. Pure narrative."""
-    
+Do NOT use any [BRACKETED COMMANDS]. Pure narrative only."""
+
     scene = call_ai("narrative", "You are the Seedfall RPG narrator. Write vivid, immersive prose.", prompt)
-    print("\n" + "="*70)
-    print(scene)
-    print("="*70 + "\n")
+    display_story(scene)
     conversation_history.append(f"Engine: {scene[:150]}")
 
 # ==============================================================================
-# 15. AUTOSAVE & COMMANDS (FIX #5: Added missing commands)
+# 17. AUTOSAVE, COMMANDS & HUD
 # ==============================================================================
 def passive_vitals_drain(state):
     turn = state['game_state']['time_tracking']['turn']
     if turn > 0 and turn % PASSIVE_DRAIN_INTERVAL == 0:
         p = state['game_state']['player']
-        p['vitals']['hunger'] = max(0, p['vitals']['hunger'] - 2)
-        p['vitals']['thirst'] = max(0, p['vitals']['thirst'] - 3)
+        p['vitals']['hunger'] = max(0, p['vitals'].get('hunger', 100) - 2)
+        p['vitals']['thirst'] = max(0, p['vitals'].get('thirst', 100) - 3)
         if p.get('current_elq', 0) >= 15:
-            p['vitals']['sanity'] = max(0, p['vitals']['sanity'] - 1)
+            p['vitals']['sanity'] = max(0, p['vitals'].get('sanity', 100) - 1)
         logger.info(f"⏳ Drain: H={p['vitals']['hunger']} T={p['vitals']['thirst']}")
 
 def force_autosave(state, reason="periodic"):
@@ -651,6 +803,7 @@ def force_autosave(state, reason="periodic"):
         passive_vitals_drain(state)
         if save_game_state(state):
             logger.info(f"💾 Autosave ({reason})")
+            print(f"  💾 Autosaved ({reason})")
             return True
         return False
     except Exception as e:
@@ -665,27 +818,33 @@ def save_on_exit(state):
         print("❌ Save failed!")
 
 def show_help():
-    print("\n╔══════════════════════════════════════════════╗")
-    print("║           SEEDFALL RPG — COMMANDS           ║")
-    print("╠══════════════════════════════════════════════╣")
-    print("║  /status    — Show vitals & energy          ║")
-    print("║  /inventory — Show carried items            ║")
-    print("║  /quests    — Show active quests            ║")
-    print("║  /engine    — Show Synthesis Engine status   ║")
-    print("║  /save      — Manual save                   ║")
-    print("║  /history   — Show recent actions           ║")
-    print("║  /help      — Show this menu                ║")
-    print("║  /quit      — Save & exit                   ║")
-    print("╚══════════════════════════════════════════════╝\n")
+    print("""
+╔══════════════════════════════════════════════╗
+║           SEEDFALL RPG — COMMANDS           ║
+╠══════════════════════════════════════════════╣
+║  /status    — Show vitals & energy          ║
+║  /inventory — Show carried items            ║
+║  /quests    — Show active quests            ║
+║  /engine    — Show Synthesis Engine status   ║
+║  /era       — Show current temporal era     ║
+║  /save      — Manual save                   ║
+║  /history   — Show recent actions           ║
+║  /help      — Show this menu                ║
+║  /quit      — Save & exit                   ║
+║  (anything else) — Describe your action     ║
+╚══════════════════════════════════════════════╝
+""")
 
 def show_inventory(state):
     p = state['game_state']['player']
     inv = p.get('inventory', {})
     res = p.get('resources', {})
-    print(f"\n🎒 RESOURCES: Food={res.get('food',0)}, Water={res.get('water',0)}, Scrip={res.get('scrip',0)}")
+    print(f"\n🎒 RESOURCES: Food={res.get('food',0)}, Water={res.get('water',0)}, Scrip={res.get('scrip',0)}, Cores={len(res.get('cores',[]))}")
     print(f"📦 CARRIED ({len(inv.get('carried',[]))} items):")
     for item in inv.get('carried', [])[:20]:
         print(f"   • {item if isinstance(item, str) else item.get('name','Unknown')}")
+    if inv.get('equipped'):
+        print(f"⚔️ EQUIPPED: {json.dumps(inv['equipped'])}")
     print()
 
 def show_quests(state):
@@ -693,18 +852,73 @@ def show_quests(state):
     print(f"\n📜 ACTIVE QUESTS ({len(active)}):")
     for q in active[:10]:
         print(f"   • {q if isinstance(q, str) else q.get('name','Unknown')}")
-    if not active: print("   (none)")
+    if not active:
+        print("   (none)")
     print()
 
 def show_engine(state):
     eng = state['game_state'].get('synthesis_engine', {})
     gm = eng.get('gender_manifestation', {})
     print(f"\n🔧 SYNTHESIS ENGINE | Level: {eng.get('level',0)} | Tier: {eng.get('current_tier',1)}")
-    print(f"   Stage: {gm.get('stage_name','?')} | Personality: {gm.get('personality_notes','?')}")
+    print(f"   Stage: {gm.get('stage_name','?')} ({gm.get('current_stage',0)})")
+    print(f"   Personality: {gm.get('personality_notes','?')}")
+    print(f"   Corruption: {eng.get('corruption_level',0)} | Sync: {eng.get('synchronization',0)}")
     print(f"   Cores: {eng.get('core_fuel_reserves',{})}\n")
 
+def show_era(state):
+    temporal = get_temporal_restrictions(state)
+    day = state['game_state']['time_tracking']['day']
+    print(f"\n📅 CURRENT ERA: Day {day} - {temporal['era'].replace('_', ' ').title()}")
+    print(f"   Max Beast Tier: {temporal['max_beast_tier']}")
+    print(f"   Max NPC Track: {temporal['max_npc_track']}")
+    print(f"   Max Assimilated: {temporal['max_assimilated_tier']}")
+    print(f"   Factions: {'Yes' if temporal['factions_allowed'] else 'No'}")
+    print(f"   Mutations: {'Yes' if temporal['mutations_allowed'] else 'No'}")
+    print(f"   Narrative Focus: {temporal['narrative_focus']}\n")
+
+def generate_hud(state):
+    p = state['game_state']['player']
+    t = state['game_state']['time_tracking']
+    temporal = get_temporal_restrictions(state)
+
+    def text_bar(current, maximum, length=10):
+        current = max(0, current)
+        maximum = max(1, maximum)
+        ratio = min(1.0, current / maximum)
+        filled = int(ratio * length)
+        empty = length - filled
+        return "█" * filled + "░" * empty + f" {int(current)}/{int(maximum)}"
+
+    hp_bar = text_bar(p['vitals'].get('hp', 0), p['vitals'].get('max_hp', 100))
+    sanity_bar = text_bar(p['vitals'].get('sanity', 0), p['vitals'].get('max_sanity', 100))
+    hunger_bar = text_bar(p['vitals'].get('hunger', 0), p['vitals'].get('max_hunger', 100))
+    thirst_bar = text_bar(p['vitals'].get('thirst', 0), p['vitals'].get('max_thirst', 100))
+    s_bar = text_bar(p['energy'].get('S', 0), p['energy'].get('max_S', 100))
+    rc_bar = text_bar(p['energy'].get('Rc', 0), p['energy'].get('max_Rc', 100))
+    m_bar = text_bar(p['energy'].get('M', 0), p['energy'].get('max_M', 100))
+
+    status_effects = ", ".join(p.get('status_effects', [])) or "None"
+    cores_count = len(p.get('resources', {}).get('cores', []))
+    location = p.get('location', 'Unknown')[:20].ljust(20)
+    weather = p.get('current_weather', 'Unknown')[:10].ljust(10)
+    era_short = temporal['era'][:15].ljust(15)
+
+    return f"""╭──────────────────────────────────────────────────────────────────────────────╮
+│ 📍 {location} │ ⏰ Day {t.get('day',1):<3} Turn {t.get('turn',0):<4} │ 🌤️ {weather} │ 🌡️ ELQ: {p.get('current_elq',0):<3} │
+│ 📅 Era: {era_short} │ Max Beast: {temporal['max_beast_tier']:<3} │ Factions: {'Y' if temporal['factions_allowed'] else 'N'} │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ ❤️  HP:     {hp_bar:<24} │ 🧠 Sanity: {sanity_bar:<24} │
+│ 🍖 Hunger: {hunger_bar:<24} │ 💧 Thirst: {thirst_bar:<24} │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ ⚡ S:  {s_bar:<28} │ 🔮 Rc: {rc_bar:<28} │
+│ 🧬 M:  {m_bar:<28} │ ⚠️  Exhaustion: Level {p.get('exhaustion_level',0):<2}      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ 🎒 Food: {p.get('resources',{}).get('food',0):<3} | 💧 Water: {p.get('resources',{}).get('water',0):<3} | 💰 Scrip: {p.get('resources',{}).get('scrip',0):<4} | 🔋 Cores: {cores_count:<2}   │
+│ 🌀 Effects: {status_effects:<62} │
+╰──────────────────────────────────────────────────────────────────────────────╯"""
+
 # ==============================================================================
-# 16. MAIN GAME LOOP
+# 18. MAIN GAME LOOP
 # ==============================================================================
 def game_loop():
     print("🌌 Initializing Seedfall RPG Engine...")
@@ -734,7 +948,7 @@ def game_loop():
     if state['game_state']['time_tracking']['turn'] == 0:
         generate_opening_scene(master, state)
 
-    print("✅ Engine Ready. Type /help for commands.\n")
+    print("\n✅ Engine Ready. Type /help for commands.\n")
 
     while True:
         try:
@@ -748,7 +962,7 @@ def game_loop():
 
         cmd = user_input.lower()
 
-        # Commands
+        # --- Player Commands ---
         if cmd in ['/quit', 'exit', '/exit']:
             save_on_exit(state)
             break
@@ -757,8 +971,8 @@ def game_loop():
             continue
         if cmd == '/status':
             p = state['game_state']['player']
-            print(f"\n📊 HP: {p['vitals']['hp']} | Sanity: {p['vitals']['sanity']} | H: {p['vitals']['hunger']} | T: {p['vitals']['thirst']}")
-            print(f"⚡ S: {p['energy']['S']} | Rc: {p['energy']['Rc']} | M: {p['energy']['M']} | Exhaustion: {p['exhaustion_level']}")
+            print(f"\n📊 HP: {p['vitals'].get('hp',0)}/{p['vitals'].get('max_hp',100)} | Sanity: {p['vitals'].get('sanity',0)}/{p['vitals'].get('max_sanity',100)} | H: {p['vitals'].get('hunger',0)} | T: {p['vitals'].get('thirst',0)}")
+            print(f"⚡ S: {p['energy'].get('S',0)}/{p['energy'].get('max_S',100)} | Rc: {p['energy'].get('Rc',0)}/{p['energy'].get('max_Rc',100)} | M: {p['energy'].get('M',0)}/{p['energy'].get('max_M',100)}")
             print(f"📍 {p.get('location','?')} | ELQ: {p.get('current_elq',0)} | {p.get('current_weather','?')}\n")
             continue
         if cmd == '/inventory':
@@ -770,6 +984,9 @@ def game_loop():
         if cmd == '/engine':
             show_engine(state)
             continue
+        if cmd == '/era':
+            show_era(state)
+            continue
         if cmd == '/save':
             if force_autosave(state, "manual"):
                 print("💾 Saved!\n")
@@ -777,17 +994,22 @@ def game_loop():
         if cmd == '/history':
             print("\n📜 Recent actions:")
             for h in list(conversation_history)[-6:]:
-                print(f"   • {h[:80]}")
+                print(f"   • {h[:100]}")
             print()
             continue
 
-        # Process action
-        sanitized = html.escape(user_input)[:500]
-        conversation_history.append(f"Player: {sanitized}")
-
+        # --- Process Narrative Action ---
+        sanitized = user_input[:500]
+        conversation_history.append(f"Player: {sanitized[:100]}")
         system_prompt = build_system_prompt(master, state, sanitized)
+
         print("🤖 ENGINE: Processing...")
         raw_ai = call_ai("narrative", system_prompt, f"Player Action: {sanitized}")
+
+        # Validate AI output
+        if not raw_ai or raw_ai == "[ENGINE ERROR: AI unavailable]":
+            print("❌ AI failed to respond. Please try again.\n")
+            continue
 
         batch = StateBatch()
         clean_narrative, feedback = parse_and_execute_ai_commands(raw_ai, engine, batch)
@@ -797,28 +1019,29 @@ def game_loop():
             state = get_game_state()
             engine = MechanicsEngine(master, state)
 
-        # Increment turn ONCE here
+        # Increment turn ONCE
         state['game_state']['time_tracking']['turn'] += 1
         current_turn = state['game_state']['time_tracking']['turn']
 
-        # Periodic autosave (does NOT increment turn)
+        # Periodic autosave
         if current_turn % AUTOSAVE_INTERVAL == 0:
             force_autosave(state, f"turn {current_turn}")
             state = get_game_state()
             engine = MechanicsEngine(master, state)
 
-        conversation_history.append(f"Engine: {clean_narrative[:150]}")
+        conversation_history.append(f"Engine: {clean_narrative[:100]}")
 
-        print("\n" + "="*70)
-        for fb in feedback:
-            print(fb)
+        # --- Display Output (Tasteful Vertical Layout) ---
         if feedback:
-            print("-"*70)
-        print(clean_narrative)
-        print("="*70 + "\n")
+            feedback_text = "\n".join(f"  ⚙️ {fb}" for fb in feedback)
+            display_system(feedback_text)
+
+        display_story(clean_narrative)
+        display_hud(generate_hud(state))
+        print()
 
 # ==============================================================================
-# 17. MAIN
+# 19. MAIN EXECUTION
 # ==============================================================================
 if __name__ == "__main__":
     game_loop()
