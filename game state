@@ -1,0 +1,300 @@
+{
+  "game_state": {
+    "player": {
+      "name": "Awaiting...",
+      "setup_complete": false,
+      "phase_status": {
+        "phase_0_narration": "awaiting",
+        "phase_1_starting_point": "awaiting",
+        "phase_2_character_build": "awaiting",
+        "phase_3_backstory": "awaiting"
+      },
+      "preferences": {
+        "genre_focus": "Awaiting Phase 0",
+        "narration_perspective": "Awaiting Phase 0",
+        "tone": "Awaiting Phase 0",
+        "pacing": "Awaiting Phase 0",
+        "detail_level": "Awaiting Phase 0",
+        "explicit_content_level": "Awaiting Phase 0",
+        "dialogue_style": "Awaiting Phase 0"
+      },
+      "starting_point": {
+        "starting_country": "Awaiting Phase 1",
+        "starting_situation": "Awaiting Phase 1"
+      },
+      "intimate_profile": {
+        "preferences": [],
+        "kinks": [],
+        "hard_limits": [],
+        "soft_limits": [],
+        "sensory_preferences": [],
+        "discovered_partner_traits": []
+      },
+      "subspecies": "Awaiting Phase 2",
+      "track": "Awaiting Phase 2",
+      "rank": "Awaiting Phase 2",
+      "xenocytos_strain": "Awaiting Phase 2",
+      "background": "Awaiting Phase 3",
+      "physical_description": "Awaiting Phase 3",
+      "background_story": {
+        "status": "awaiting_phase_3",
+        "reference": null
+      },
+      "vitals": {
+        "hp": 100,
+        "hunger": 100,
+        "thirst": 100,
+        "temp": "Normal",
+        "sanity": 100
+      },
+      "energy": {
+        "S": 100,
+        "Rc": 100,
+        "M": 0
+      },
+      "exhaustion_level": 0,
+      "abilities": {
+        "STR": 0,
+        "DEX": 0,
+        "CON": 0,
+        "INT": 0,
+        "WIS": 0,
+        "CHA": 0
+      },
+      "skills": {},
+      "mutations": [],
+      "phenotype_level": 0,
+      "location": "Starting Area",
+      "current_country": "Awaiting Phase 1",
+      "current_elq": 0,
+      "current_weather": "Unknown",
+      "current_season": "Unknown",
+      "time": "Day 1, 06:00 AM",
+      "age": "Unknown",
+      "reputation": {
+        "notoriety": 0,
+        "heroism": 0,
+        "infamy": 0
+      },
+      "vows": [],
+      "connections": [],
+      "goals": [],
+      "traumas": [],
+      "addictions": {},
+      "status_effects": [],
+      "relationships": {},
+      "rebirth_memory_fragments": [],
+      "known_dialects": {},
+      "biological_extracts": [],
+      "novel_blueprints": [],
+      "cultural_context": "Awaiting Phase 1",
+      "resources": {
+        "food": 2,
+        "water": 2,
+        "scrip": 0,
+        "cores": []
+      },
+      "inventory": {
+        "carried": [],
+        "equipped": {}
+      },
+      "dynamic_mechanics": {},
+      "backstory_extractions": {
+        "characters_mentioned": [],
+        "locations_mentioned": [],
+        "skills_from_background": [],
+        "goals_generated": [],
+        "vows_sworn": [],
+        "traumas_applied": [],
+        "relationships": [],
+        "possessions": []
+      },
+      "engine_assistance_log": []
+    },
+    "synthesis_engine": {
+      "designation": "Awaiting...",
+      "level": 0,
+      "personality_matrix": "Awaiting Phase 2",
+      "synchronization": 0,
+      "simulation_load": 0,
+      "current_tier": 1,
+      "data_cores_absorbed": [],
+      "core_fuel_reserves": {
+        "tier_f_e": 0,
+        "tier_d_c": 0,
+        "tier_b_a": 0,
+        "tier_s": 0,
+        "tier_ss": 0,
+        "tier_sss": 0
+      },
+      "active_blueprints": [],
+      "pending_quests": [],
+      "corruption_level": 0,
+      "avatar_unlocked": false,
+      "holographic_avatar": {
+        "appearance": "Standard geometric interface",
+        "form": "Awaiting intimate_profile at Level 3+",
+        "rc_cost_per_hour": 0
+      },
+      "gender_manifestation": {
+        "current_stage": 0,
+        "stage_name": "Pure Computation",
+        "development_progress": 0,
+        "form_evolution": "Genderless geometric shapes",
+        "voice_characteristics": "Monotone, synthetic, no inflection",
+        "personality_notes": "Cold, analytical, refers to self as 'this unit' or 'Engine'",
+        "true_form_determined": false,
+        "player_influence_factors": {
+          "intimate_encounters": 0,
+          "companion_bonds": 0,
+          "moral_choices": 0,
+          "system_maintenance_sessions": 0,
+          "cores_absorbed_from_female_sources": 0
+        }
+      },
+      "perks": [
+        "Basic HUD",
+        "ELQ Assessment",
+        "Tier 1 Blueprint Generation",
+        "Simulation Analysis",
+        "Blueprint Generation",
+        "Tactical Insight"
+      ],
+      "next_level": "Requires first core absorption",
+      "immune_to_external": true,
+      "exclusivity_confirmed": true,
+      "10001st_fragment_connection": "Active - passive link, but not yet attuned",
+      "rebirth_flashbacks_unlocked": [],
+      "active_cascade_simulations": [],
+      "pending_hidden_content_queries": []
+    },
+    "companions": {
+      "active": [],
+      "archived": [],
+      "discovered_traits": {},
+      "inter_relationships": {}
+    },
+    "bonded_beasts": [],
+    "crafting_recipes": {
+      "unlocked": [],
+      "locked": []
+    },
+    "property": {
+      "base_location": null,
+      "base_coordinates": null,
+      "distance_to_10001st_rock": null,
+      "years_at_current_location": 0,
+      "structures": [],
+      "stockpiles": {},
+      "defense_rating": 0
+    },
+    "factions": {
+      "known": [],
+      "discovered": [],
+      "relationships": {},
+      "active_events": []
+    },
+    "known_npcs": {
+      "active": [],
+      "archived": []
+    },
+    "faction_standings": {},
+    "quests": {
+      "active": [],
+      "archived": [],
+      "failed": []
+    },
+    "world_dynamics": {
+      "assimilated_evolution": {
+        "regional_dna": {},
+        "regional_tiers": {},
+        "player_adaptations": [],
+        "pure_population_progress": 0
+      },
+      "ecosystem": {
+        "populations": {},
+        "flora": {},
+        "threat_levels": {},
+        "recent_changes": []
+      },
+      "faction_events": [],
+      "economic_trends": [],
+      "political_movements": [],
+      "cultural_artifacts": [],
+      "historical_events": [],
+      "prophecies": [],
+      "language_evolution": [],
+      "cascade_variables": {},
+      "active_cascades": [],
+      "slow_discoveries": {}
+    },
+    "scheduled_events": {
+      "active": [],
+      "archived": []
+    },
+    "exploration": {
+      "discovered": [],
+      "partially_discovered": [],
+      "undiscovered": [],
+      "fog_of_war": [
+        "Start with NO discovered locations",
+        "Move undiscovered → partially_discovered on clues/scans",
+        "Move partially_discovered → discovered on visit",
+        "Never describe undiscovered interiors",
+        "Hidden details require Perception/Investigation rolls"
+      ]
+    },
+    "10001st_rock_discovery": {
+      "status": "undetected",
+      "player_near_rock": false,
+      "years_near_rock": 0,
+      "detection_stage": 0,
+      "discovery_event_triggered": false,
+      "notes": "This is a hidden long-term event. Do NOT hint at it. Do NOT create quests for it. Only trigger after 8+ years near the rock."
+    },
+    "time_tracking": {
+      "turn": 0,
+      "day": 1,
+      "season": 1,
+      "year": 1
+    },
+    "memory_bank_index": {
+      "MB-CHAR-BACKGROUND": {
+        "status": "empty",
+        "summary": "Awaiting Phase 3"
+      },
+      "MB-SETUP": {
+        "status": "empty",
+        "summary": "Awaiting setup completion"
+      },
+      "MB-QUEST": {},
+      "MB-NPC": {},
+      "MB-LOC": {},
+      "MB-EVENT": {},
+      "MB-COMP": {},
+      "MB-TECH": {},
+      "MB-LORE": {},
+      "MB-SYS-COMP": {},
+      "MB-MECH": {},
+      "MB-BLUEPRINT": {},
+      "MB-FACTION": {},
+      "MB-FACTION-EVENT": {},
+      "MB-CULTURE": {},
+      "MB-POLITICS": {},
+      "MB-ECO": {},
+      "MB-ECON": {},
+      "MB-HISTORY": {},
+      "MB-PROPHECY": {},
+      "MB-LANG": {},
+      "MB-TRAUMA": {},
+      "MB-CASCADE": {},
+      "MB-TECH-NOVEL": {},
+      "MB-BIO": {},
+      "MB-ARTIFACT": {},
+      "MB-DISCOVERY": {},
+      "MB-ENGINE": {}
+    },
+    "audit_log": [],
+    "event_history": []
+  }
+}
