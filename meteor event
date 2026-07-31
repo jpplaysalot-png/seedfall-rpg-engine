@@ -1,0 +1,153 @@
+{
+  "ultimate_historical_dossier_pre_mutation": {
+    "verbatim_foundational_text": {
+      "planet_design_overview": "Earth is an oblate spheroid (slightly squished sphere) with an active, interconnected architecture. Its design spans physical geography, ocean systems, atmospheric protective layers, finite resources, and a massive biological ecosystem.",
+      "lithosphere_exact": "Land covers roughly 29% of Earth's surface (~148 million km²), broken into major tectonic plates that continuously shift, create mountains, and drive volcanic activity.",
+      "continents_exact": [
+        "Asia: Largest by area and population, featuring extreme elevations (e.g., Mount Everest at 8,848 m).",
+        "Africa: Features vast deserts (Sahara), rift valleys, and major tropical rainforests.",
+        "North America: Characterized by large plains, the Rocky Mountains, and extensive river networks.",
+        "South America: Home to the Amazon Basin and the Andes mountain chain.",
+        "Antarctica: Ice-covered landmass holding ~90% of Earth's fresh ice.",
+        "Europe: Highly indented coastline with varied peninsulas and plains.",
+        "Australia/Oceania: Island continent known for arid interiors (Outback) and unique isolated ecosystems."
+      ],
+      "topographical_features_exact": "Includes mountain ranges (Himalayas, Andes), major basins (Amazon, Congo), tectonic rifts, and coastal continental shelves.",
+      "hydrosphere_exact": "Earth’s water is predominantly saline, with fresh water making up only about 2.5% of the total budget.",
+      "oceans_exact": [
+        "Pacific Ocean: Largest and deepest ocean basin, encircled by the volcanic 'Ring of Fire'.",
+        "Atlantic Ocean: S-shaped basin dividing the Americas from Europe and Africa, driven by the AMOC (Atlantic Meridional Overturning Circulation).",
+        "Indian Ocean: Governed by seasonal monsoon cycles affecting South Asia.",
+        "Southern Ocean: Encircles Antarctica with cold, high-speed circumpolar currents.",
+        "Arctic Ocean: Shallowest and smallest ocean, largely covered by seasonal sea ice."
+      ],
+      "freshwater_distribution_exact": "Ice Caps & Glaciers: ~68.7%, Groundwater: ~30.1%, Surface Fresh Water: Less than 1.2% in rivers, lakes, and soil moisture.",
+      "atmosphere_exact": "Earth's atmosphere is held in place by gravity, providing pressure, temperature regulation, and protection against solar radiation and meteoroids.",
+      "gas_composition_exact": "Nitrogen (N2): 78.08%, Oxygen (O2): 20.95%, Argon (Ar): 0.93%, Carbon Dioxide (CO2), Water Vapor, Trace Gases: ~0.04% (acts as the primary thermal blanket).",
+      "atmospheric_layers_exact": "Troposphere (0-12 km): Contains 75-80% of atmospheric mass; where all weather occurs. Stratosphere (12-50 km): Contains the Ozone Layer (O3), which blocks ultraviolet solar radiation. Mesosphere (50-85 km): Coldest layer; where most meteoroids burn up upon entry. Thermosphere (85-600 km): Absorbs high-energy X-rays and UV radiation; location of the International Space Station and auroras. Exosphere (>600 km): Gradual transition layer fading into outer space.",
+      "resources_exact": "Earth functions as a closed-system chemical reservoir supplying materials for biological life and technological industrialization.",
+      "resource_types_exact": "Renewable & Flow Resources: Solar irradiance, wind energy, tidal cycles, atmospheric oxygen, and the hydrologic cycle. Non-Renewable Fossil Energy: Concentrated ancient organic matter including crude oil, natural gas, and coal reserves. Mineral & Metallic Deposits: Iron ore, copper, aluminum, lithium, rare earth elements (REEs), and silicon deposited through tectonic, hydrothermal, and magmatic activity. Soil & Ecosystem Services: Arable topsoil for agriculture, forests for carbon sequestration, and pollination networks.",
+      "biosphere_exact": "The biosphere includes all living organisms across land, water, and air, organized into complex food webs and ecosystems.",
+      "biosphere_details_exact": "Human Population: Exceeds 8 billion people distributed unevenly across continents, heavily concentrated along coastlines, river valleys, and urban centers. Global Biodiversity: Estimated Species Count: ~8.7 million species of eukaryotic life (animals, plants, fungi), with over 1.5 million formally cataloged. Microbial Life: Trillions of bacterial, archaeal, and viral strains dominating the soil, ocean depths, and subsurface crust by total sheer count. Biomass Distribution: Plants account for ~80% of total global biomass (measured in carbon mass). Bacteria account for ~15%. Animals represent less than 0.4%, with humans making up a tiny fraction of total planetary biomass, despite having a massive physical footprint on land use and climate.",
+      "pre_impact_2030_societal_exact": "Widespread integration of advanced AI assistants, mature augmented reality (AR) interfaces, early-stage autonomous transportation networks, and next-generation telecommunications (6G rollout in major hubs). Aggressive but uneven transition to renewable energy. Visible climate adaptation measures are in place. Extreme weather events are more frequent but better managed by predictive AI models. A multipolar world with intense competition over critical minerals (lithium, cobalt, rare earth elements). Cybersecurity and data privacy are paramount global concerns. Approximately 8.5 billion humans, with continued hyper-urbanization. Megacities are denser, utilizing vertical farming and smart-grid infrastructure."
+    },
+    "impact_event_parameters": {
+      "start_date": "2030-03-14",
+      "end_date": "2030-07-08",
+      "duration_days": 116,
+      "total_impactors": 1001,
+      "average_velocity_kms": 22.4,
+      "average_angle_degrees": 45,
+      "total_impactor_mass_mt": 328000000,
+      "total_ejecta_mass_mt": 5200000000
+    },
+    "chronological_timeline": [
+      {"date": "2030-03-14", "event": "The Shardfall begins. First Class C and Class B impacts detected globally."},
+      {"date": "2030-05-22", "event": "The Omega Strike. Class Omega impactor (~450m) strikes Point Nemo (48°52.6′S 123°23.6′W), displacing 142 km³ of water.", "coordinates": "48°52.6′S 123°23.6′W"},
+      {"date": "2030-07-08", "event": "The Shardfall ends (116 days total). Global infrastructure collapse begins."},
+      {"date": "2030-10-15", "event": "Stratospheric dust achieves 100% global coverage. 1.6°C global temperature drop confirmed."},
+      {"date": "2031-01-01", "event": "New baseline established. Global population stabilizes at 8,032,488,000."}
+    ],
+    "impactor_distribution": {
+      "class_c_minor": {
+        "count": 850, "size_m": "1-15", "oceanic": 603, "terrestrial": 247, "direct_casualties": 4200000,
+        "terrestrial_breakdown": {"Asia": 68, "Africa": 52, "North_America": 48, "South_America": 38, "Europe": 24, "Australia_Oceania": 16, "Antarctica_Greenland": 1}
+      },
+      "class_b_moderate": {
+        "count": 120, "size_m": "15-60", "oceanic": 85, "terrestrial": 35, "direct_casualties": 28000000, "avg_crater_volume_m3": 120000,
+        "terrestrial_breakdown": {"Kazakhstan_Steppes": 3, "Sub_Saharan_Africa_Interior": 4, "Siberian_Tundra": 3, "Amazon_Basin": 3, "Australian_Outback": 3, "Canadian_Shield": 2, "Sahara_Desert": 2, "Tibetan_Plateau": 2, "US_Midwest": 2, "Scandinavia": 2, "Congo_Basin": 2, "Other": 9}
+      },
+      "class_a_major": {
+        "count": 30, "size_m": "60-250", "oceanic": 22, "terrestrial": 8, "direct_casualties": 500000, "avg_crater_volume_m3": 4800000,
+        "terrestrial_locations": ["Amazon Basin (Brazil)", "Sahara Desert (Chad)", "Siberian Tundra (Russia)", "Greenland Ice Sheet", "Great Victoria Desert (Australia)", "Congo Basin (DRC)", "Tibetan Plateau (China)", "Antarctic Interior"]
+      },
+      "class_omega_catastrophic": {
+        "count": 1, "size_m": "~450", "location": "Point Nemo, South Pacific", "oceanic": 1, "terrestrial": 0, "water_displacement_km3": 142, "direct_casualties": 12000
+      }
+    },
+    "oceanic_summary_totals": {"pacific": 304, "atlantic": 184, "indian": 120, "southern": 68, "arctic": 35},
+    "environmental_damage": {
+      "stratospheric_dust_mt": 712000000,
+      "tropospheric_dust_mt": 4030000000,
+      "tropospheric_coverage_km2": 12500000,
+      "respiratory_fatalities": 14200000,
+      "regional_dust_accumulation": {
+        "South_American_Basin": {"mass_mt": 1200000000, "avg_depth_cm": 4.5},
+        "Central_African_Rift": {"mass_mt": 850000000, "avg_depth_cm": 3.2},
+        "Siberian_Craton": {"mass_mt": 720000000, "avg_depth_cm": 2.8},
+        "North_American_Plains": {"mass_mt": 410000000, "avg_depth_cm": 1.5},
+        "Eurasian_Steppe": {"mass_mt": 380000000, "avg_depth_cm": 2.1},
+        "Australian_Interior": {"mass_mt": 290000000, "avg_depth_cm": 1.8},
+        "Other_Zones": {"mass_mt": 180000000}
+      },
+      "climate_deltas": {
+        "global_temp_drop_celsius": 1.6,
+        "solar_irradiance_reduction_percent": 14.8,
+        "albedo_increase": 0.04,
+        "sst_drop_celsius": 1.2,
+        "background_radiation_spike_microsieverts_hr": 0.04
+      }
+    },
+    "human_demographics": {
+      "direct_fatalities": 32712000,
+      "secondary_fatalities": 434800000,
+      "total_fatalities": 467512000,
+      "remaining_population": 8032488000,
+      "displaced_persons": 620000000,
+      "demographic_shifts": {
+        "birth_rate_drop_percent": 34,
+        "infant_mortality_increase_percent_devastated_regions": 210
+      }
+    },
+    "infrastructure_metrics": {
+      "losses": {
+        "aviation_grounded_percent": 78, "airports_inoperable": 112, "air_cargo_lost_percent": 48,
+        "port_capacity_operational_percent": 24, "shipping_tonnage_lost_percent": 14,
+        "energy_generation_lost_percent": 31, "coastal_fossil_plants_offline_percent": 42, "coastal_nuclear_plants_offline": 14, "high_voltage_substations_destroyed_percent": 28,
+        "critical_rail_destroyed_km": 19400, "highway_network_impassable_percent": 14,
+        "intercontinental_bandwidth_lost_percent": 41, "transoceanic_cables_severed": 34, "cell_towers_destroyed_percent": 33,
+        "water_treatment_damaged_percent": 26, "piped_water_access_drop_from_to_percent": "74 to 41"
+      },
+      "survived_and_new": {
+        "rural_roads_intact_percent": 62, "pop_decentralized_water_percent": 41, "high_speed_rail_retrofitted_percent": 18,
+        "skyscraper_floors_hydroponic": 14500, "scavenger_hubs_established": 3200
+      }
+    },
+    "resource_shifts_and_conflicts": {
+      "scattered_iron_nickel_mt": 28400000,
+      "accessible_pgms_kazakhstan_tons": 142,
+      "kazakhstan_pgm_rush_scavengers": 45000,
+      "kazakhstan_militia_conflicts": 3200,
+      "new_meltwater_lakes_m3": 4200000000
+    },
+    "geopolitical_and_economic_changes": {
+      "functional_sovereign_states": 112,
+      "collapsed_fragmented_states": 83,
+      "ungoverned_zones_population": 480000000,
+      "global_gdp_contraction_percent": 38,
+      "total_damages_usd": 58000000000000,
+      "new_entities_formed": [
+        {"name": "The Interior Alliance", "region": "North America", "population": 290000000},
+        {"name": "The Alpine Compact", "region": "Europe", "population": 18000000},
+        {"name": "The Southern Cross Coalition", "region": "NZ/Tasmania/Chile", "population": 8500000}
+      ],
+      "country_metrics": {
+        "swiss_confederation": {"population": 12500000, "displaced_absorbed": 3500000, "grid_stability_percent": 98, "agri_output_percent": 85},
+        "new_zealand": {"population": 4900000, "population_retained_percent": 94},
+        "argentina_chile": {"population": 48000000, "crop_yield_drop_percent": 22},
+        "philippines": {"physical_status": "Intact", "mortality_percent": 12, "cause": "Secondary shocks"},
+        "coastal_japan_eastern_china": {"physical_status": "Intact", "mortality_percent": 8, "cause": "Secondary shocks"}
+      },
+      "post_impact_barter_economy": {
+        "1L_purified_water": "3 hours unskilled labor OR 0.5kg pre-Shardfall seeds",
+        "1kg_strain_A_bio_ash_PGM": "50L purified water OR 1 course broad-spectrum antibiotics",
+        "1kg_strain_B_processed_biomass": "2L purified water"
+      }
+    },
+    "physical_biosphere_adjustments": {
+      "tropical_canopy_die_off_percent": 12,
+      "temperate_boreal_forest_poleward_expansion_km": 140,
+      "fallout_zone_crop_yield_rebound_percent_by_year_2": 88
+    }
+  }
+}
